@@ -437,3 +437,171 @@ export const heartTrend = (a: Affinity): { day: string; value: number }[] => {
     return { day: m.day, value: v };
   });
 };
+/** 7 天旅程时间轴：整段体验的节奏 */
+export type JourneyDay = {
+  day: number;
+  label: string;
+  title: string;
+  desc: string;
+};
+
+/** 当前进行到第几天 */
+export const currentDay = 4;
+
+export const journey: JourneyDay[] = [
+  { day: 1, label: "初见", title: "十个人住进小屋", desc: "自我介绍、第一印象，谁也没敢先开口。" },
+  { day: 2, label: "试探", title: "第一次共同任务", desc: "一起做饭、一起收拾，距离在无意中缩短。" },
+  { day: 3, label: "分歧", title: "选择开始有代价", desc: "有人被落下，有人第一次觉得不甘心。" },
+  { day: 4, label: "靠近", title: "厨房里的十二分钟", desc: "三件事之后，你可以主动私聊想见的人。" },
+  { day: 5, label: "约会", title: "两人一组，60 分钟独处", desc: "城南旧书店，名单由昨晚的心动抉择决定。" },
+  { day: 6, label: "摊牌", title: "把没说的话说出来", desc: "秘密开始流动，关系被重新排列。" },
+  { day: 7, label: "告白", title: "最后一夜的选择", desc: "只能牵一个人的手，走出小屋。" },
+];
+
+/* ======================= 7 天结语（结尾页） ======================= */
+
+/** 客观记录：一串可被统计的数字 */
+export type FinaleStat = { label: string; value: string; sub?: string };
+
+export const finaleStats: FinaleStat[] = [
+  { label: "在小屋的天数", value: "7", sub: "168 小时" },
+  { label: "发起的私聊", value: "18", sub: "覆盖 7 位嘉宾" },
+  { label: "关键选择", value: "12", sub: "其中 4 次改变了名单" },
+  { label: "约会次数", value: "3", sub: "2 次主动 · 1 次被选" },
+  { label: "心动短信", value: "5", sub: "发出 3 · 收到 2" },
+  { label: "最长的一次沉默", value: "12 分", sub: "Day 3 阳台" },
+];
+
+/** 客观记录里的关键节点 */
+export const finaleMilestones: { day: string; text: string }[] = [
+  { day: "Day 1", text: "第一个开口做自我介绍的人是你。" },
+  { day: "Day 2", text: "你把最后一块蛋糕让了出去。" },
+  { day: "Day 3", text: "阳台上你们都没说话，你也没有走。" },
+  { day: "Day 4", text: "厨房里的十二分钟，你第一次主动问了心事。" },
+  { day: "Day 5", text: "旧书店的约会，你迟到了 4 分钟。" },
+  { day: "Day 6", text: "摊牌夜，你承认了自己在犹豫。" },
+  { day: "Day 7", text: "最后一夜，你只牵了一个人的手。" },
+];
+
+/** 与每个人的相处结论 */
+export type FinaleBond = {
+  name: string;
+  value: number;
+  tag: string;
+  summary: string;
+  key: string;
+};
+
+export const finaleBonds: FinaleBond[] = [
+  {
+    name: "温宁",
+    value: 88,
+    tag: "走到最后的人",
+    summary: "从一开始的相似，到后来的沉默都不尴尬。你们的关系是慢慢升起来的，没有一次剧烈的转折。",
+    key: "「等我想明白了，第一个告诉你。」",
+  },
+  {
+    name: "许佳",
+    value: 64,
+    tag: "差一点点",
+    summary: "她一直在往前走，你一直在观察。Day 6 之后你们都明白了答案，但谁也没有拆穿。",
+    key: "她记得你怕晒，递了一顶帽子。",
+  },
+  {
+    name: "苏杳",
+    value: 41,
+    tag: "错过的时机",
+    summary: "两次可以更近一步的机会都被别的事情打断，你们始终停在朋友那一层。",
+    key: "Day 3 她提议抽签，眼神没看你。",
+  },
+  {
+    name: "白露",
+    value: 30,
+    tag: "礼貌的距离",
+    summary: "饭桌上的照面多过真正的对话，你对她的印象一直停留在第一天。",
+    key: "「小心烫。」",
+  },
+  {
+    name: "夏可",
+    value: 22,
+    tag: "还没开始",
+    summary: "你们共享过同一首歌，但没有共享过一次完整的谈话。",
+    key: "她放了首很老的歌。",
+  },
+];
+
+/** 性格：入住前的自我刻板印象 vs 小屋里的行为观察 */
+export type TraitCompare = {
+  axis: string;
+  self: number;
+  observed: number;
+  selfWord: string;
+  observedWord: string;
+  evidence: string;
+};
+
+export const finaleSelfTags = ["理性", "慢热", "不擅长表达", "怕麻烦别人"];
+export const finaleObservedTags = ["先靠近的人", "记细节", "回避冲突", "在意公平"];
+
+export const finaleTraits: TraitCompare[] = [
+  {
+    axis: "主动性",
+    self: 35,
+    observed: 72,
+    selfWord: "我一般等别人先来",
+    observedWord: "7 天里 18 次私聊中 13 次由你发起",
+    evidence: "Day 1 第一个开口，Day 4 主动问她的心事。",
+  },
+  {
+    axis: "表达",
+    self: 30,
+    observed: 46,
+    selfWord: "说不出口",
+    observedWord: "能说，但只在深夜说",
+    evidence: "白天多为短句，22:00 后的对话平均长度是白天的 3 倍。",
+  },
+  {
+    axis: "共情",
+    self: 60,
+    observed: 84,
+    selfWord: "还行吧",
+    observedWord: "你记住了别人随口说过的事",
+    evidence: "5 次对话里引用了对方前几天说过的细节。",
+  },
+  {
+    axis: "冲突处理",
+    self: 55,
+    observed: 28,
+    selfWord: "该说的会说",
+    observedWord: "遇到分歧时你更常先让步",
+    evidence: "Day 3、Day 6 两次分歧，你都选择了退一步的选项。",
+  },
+  {
+    axis: "专一度",
+    self: 70,
+    observed: 90,
+    selfWord: "会认真对待",
+    observedWord: "心动值从 Day 3 起集中在同一个人身上",
+    evidence: "后 4 天 71% 的互动指向温宁。",
+  },
+];
+
+export const finaleVerdict = {
+  title: "一个慢，但不会回头的人",
+  body:
+    "你以为自己是被动的，但数据里你几乎每一次都先走了一步；你以为自己理性，实际上你的选择很早就固定了，只是你花了四天才承认。你不擅长在人多的时候表达，却能在只剩两个人的时候把话说准。你的问题不是不主动，而是太在意会不会打扰别人——这让你错过了苏杳，也让温宁多等了三天。",
+};
+
+/** 结语页开头的 slogan：描述这个人的恋爱特征 */
+export const finaleSlogan = {
+  line: "我不是慢热，我只是怕打扰你",
+  sub: "SLOW TO SPEAK · QUICK TO STAY",
+  desc: "七天里你 13 次先开口，却没有一次先要答案。",
+};
+
+/** 分享海报上的三个高光数字 */
+export const posterHighlights: { k: string; v: string }[] = [
+  { k: "主动开口", v: "13 次" },
+  { k: "最长沉默", v: "12 分钟" },
+  { k: "最终只牵", v: "1 个人" },
+];
