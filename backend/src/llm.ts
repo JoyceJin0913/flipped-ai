@@ -1,14 +1,18 @@
 import OpenAI from "openai";
 
-const apiKey = process.env.ARK_API_KEY;
 const baseURL = process.env.ARK_BASE_URL ?? "https://ark.cn-beijing.volces.com/api/v3";
 const model = process.env.ARK_ENDPOINT_ID ?? "doubao-seed-2-1-pro-260628";
 
-if (!apiKey) {
-  throw new Error("ARK_API_KEY 未设置。请在 backend/.env 或 frontend/.env.local 里配置。");
+let _client: OpenAI | undefined;
+function getClient(): OpenAI {
+  if (_client) return _client;
+  const apiKey = process.env.ARK_API_KEY;
+  if (!apiKey) {
+    throw new Error("ARK_API_KEY 未设置。请在 backend/.env 或 frontend/.env.local 里配置。");
+  }
+  _client = new OpenAI({ apiKey, baseURL });
+  return _client;
 }
-
-const client = new OpenAI({ apiKey, baseURL });
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -31,7 +35,7 @@ export async function chat(
 ): Promise<ChatResult> {
   const temperature = options.temperature ?? 0.9;
   try {
-    const response = await client.chat.completions.create({
+    const response = await getClient().chat.completions.create({
       model,
       messages,
       temperature,
@@ -53,5 +57,30 @@ export async function chat(
       hint = "模型 ID 可能不对，检查 ARK_ENDPOINT_ID";
     }
     return { ok: false, error: message, hint };
+  }
+}
+
+export async function chatJson(
+  messages: ChatMessage[],
+  options: { temperature?: number } = {},
+): Promise<ChatResult> {
+  const temperature = options.temperature ?? 0.9;
+  try {
+    const response = await getClient().chat.completions.create({
+      model,
+      messages,
+      temperature,
+      response_format: { type: "json_object" },
+      // @ts-expect-error - 火山方舟专有参数
+      thinking: { type: "disabled" },
+    });
+    const content = response.choices[0]?.message?.content ?? "";
+    const totalTokens = response.usage?.total_tokens ?? 0;
+    const promptTokens = response.usage?.prompt_tokens ?? 0;
+    const completionTokens = response.usage?.completion_tokens ?? 0;
+    return { ok: true, content, totalTokens, promptTokens, completionTokens };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
   }
 }
