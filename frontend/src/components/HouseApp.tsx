@@ -733,14 +733,17 @@ function SceneView({
   onPick,
   onBack,
   storyMode,
+  dynamicResult,
+  loading,
 }: {
   scene: Scene;
   picked?: Choice["key"] | undefined;
   onPick: (k: Choice["key"]) => void;
   onBack: () => void;
   storyMode?: boolean;
+  dynamicResult?: { resultText: string } | undefined;
+  loading?: boolean;
 }) {
-  const chosen = scene.choices.find((c) => c.key === picked);
 
   return (
     <div className="animate-fade-in">
@@ -816,11 +819,12 @@ function SceneView({
               <button
                 key={c.key}
                 onClick={() => onPick(c.key)}
+                disabled={loading}
                 className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${
                   active
                     ? "border-primary bg-secondary shadow-glow"
                     : "border-border bg-card/70 hover:bg-secondary/60"
-                }`}
+                } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <span
                   className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold ${
@@ -835,26 +839,15 @@ function SceneView({
           })}
         </div>
 
-        {chosen && (
+        {loading && (
+          <div className="mt-5 rounded-2xl glass-card p-4 text-center text-sm text-muted-foreground">
+            …
+          </div>
+        )}
+        {!loading && dynamicResult && (
           <div className="mt-5 rounded-2xl glass-card p-4">
             <p className="text-xs tracking-widest text-accent">剧情走向</p>
-            <p className="mt-2 text-sm leading-relaxed">{chosen.result}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {chosen.effects.map((e) => (
-                <span
-                  key={e.name}
-                  className="rounded-full bg-secondary px-3 py-1 text-[11px] text-foreground/90"
-                >
-                  {e.name} {e.delta > 0 ? `+${e.delta}` : e.delta}
-                </span>
-              ))}
-            </div>
-            <button
-              onClick={onBack}
-              className="mt-4 w-full rounded-full bg-romance py-3 text-sm font-semibold text-primary-foreground"
-            >
-              {storyMode ? "继续" : "回到小屋"}
-            </button>
+            <p className="mt-2 text-sm leading-relaxed">{dynamicResult.resultText}</p>
           </div>
         )}
         <div className="h-8" />
