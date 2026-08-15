@@ -34,6 +34,8 @@ import {
   type Member,
 } from "@/data/house";
 import { RoomNight } from "@/components/RoomNight";
+import { useHouseState } from "@/hooks/useHouseState";
+import { postChoice } from "@/lib/api";
 
 
 type TabKey = "house" | "relationships" | "me";
@@ -66,6 +68,10 @@ export function HouseApp() {
   const [inRoom, setInRoom] = useState(false);
   const [dayEndSeen, setDayEndSeen] = useState(false);
 
+  const houseState = useHouseState();
+  const [dynamicResults, setDynamicResults] = useState<Record<string, { resultText: string }>>({});
+  const [loadingSceneId, setLoadingSceneId] = useState<string | null>(null);
+
   useEffect(() => {
     setProgress(loadProgress());
     setHydrated(true);
@@ -77,6 +83,41 @@ export function HouseApp() {
       window.localStorage.setItem(STORY_KEY, JSON.stringify(p));
     } catch {
       /* ignore */
+    }
+  };
+
+  const handlePick = async (id: string, k: Choice["key"]) => {
+    setPicked((p) => ({ ...p, [id]: k }));
+    setLoadingSceneId(id);
+    try {
+      const scene = scenes.find((s) => s.id === id);
+      if (!scene) throw new Error("scene not found");
+      const chosenChoice = scene.choices.find((c) => c.key === k);
+      if (!chosenChoice) throw new Error("choice not found");
+
+      const res = await postChoice({
+        sceneId: id,
+        choiceKey: k,
+        worldState: {
+          relationships: houseState.relationships,
+          recentHistory: houseState.history,
+        },
+      });
+      setDynamicResults((prev) => ({ ...prev, [id]: { resultText: res.resultText } }));
+      houseState.applyEffects(res.effects);
+      houseState.pushHistory({
+        time: scene.time,
+        place: scene.place,
+        summary: `选了 ${k}（${chosenChoice.label}）`,
+      });
+    } catch (err) {
+      console.error("[choice] failed:", err);
+      setDynamicResults((prev) => ({
+        ...prev,
+        [id]: { resultText: "（剧情判定失败，请重试）" },
+      }));
+    } finally {
+      setLoadingSceneId(null);
     }
   };
 
@@ -92,9 +133,11 @@ export function HouseApp() {
             <StoryFlow
               startIndex={progress.index}
               picked={picked}
-              onPick={(id, k) => setPicked((p) => ({ ...p, [id]: k }))}
+              onPick={handlePick}
               onStep={(i) => saveProgress({ index: i, done: false })}
               onFinish={() => saveProgress({ index: storySequence.length - 1, done: true })}
+              dynamicResults={dynamicResults}
+              loadingSceneId={loadingSceneId}
             />
           ) : inRoom ? (
             <RoomNight chatLog={chatLog} onLeave={() => setInRoom(false)} />
@@ -105,7 +148,7 @@ export function HouseApp() {
               chatLog={chatLog}
               onLog={(e) => setChatLog((l) => [...l, e])}
               onOpen={(s) => setOpenScene(s)}
-              onPick={(id, k) => setPicked((p) => ({ ...p, [id]: k }))}
+              onPick={handlePick}
               onBack={() => setOpenScene(null)}
               onReplay={() => saveProgress({ index: 0, done: false })}
               canEnterRoom={talkedCount >= 3}
@@ -113,6 +156,8 @@ export function HouseApp() {
                 setOpenScene(null);
                 setInRoom(true);
               }}
+              dynamicResults={dynamicResults}
+              loadingSceneId={loadingSceneId}
             />
           ))}
         {tab === "relationships" && <RelationshipsView />}
@@ -166,12 +211,16 @@ function StoryFlow({
   onPick,
   onStep,
   onFinish,
+  dynamicResults,
+  loadingSceneId,
 }: {
   startIndex: number;
   picked: Picked;
   onPick: (id: string, k: Choice["key"]) => void;
   onStep: (i: number) => void;
   onFinish: () => void;
+  dynamicResults: Record<string, { resultText: string }>;
+  loadingSceneId: string | null;
 }) {
   const [index, setIndex] = useState(startIndex);
   const [transition, setTransition] = useState<string | null>(null);
@@ -243,6 +292,8 @@ function StoryFlow({
         onPick={(k) => onPick(scene.id, k)}
         onBack={next}
         storyMode
+        dynamicResult={dynamicResults[scene.id]}
+        loading={loadingSceneId === scene.id}
       />
 
       {transition && (
@@ -267,6 +318,8 @@ function HouseContent({
   onReplay,
   canEnterRoom,
   onEnterRoom,
+  dynamicResults,
+  loadingSceneId,
 }: {
   openScene: Scene | null;
   picked: Picked;
@@ -278,6 +331,8 @@ function HouseContent({
   onReplay: () => void;
   canEnterRoom: boolean;
   onEnterRoom: () => void;
+  dynamicResults: Record<string, { resultText: string }>;
+  loadingSceneId: string | null;
 }) {
   if (openScene) {
     return (
@@ -286,6 +341,8 @@ function HouseContent({
         picked={picked[openScene.id]}
         onPick={(k) => onPick(openScene.id, k)}
         onBack={onBack}
+        dynamicResult={dynamicResults[openScene.id]}
+        loading={loadingSceneId === openScene.id}
       />
     );
   }
