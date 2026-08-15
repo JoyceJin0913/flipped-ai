@@ -1,7 +1,7 @@
 import type { Scene } from "./types";
 
 export const livingOne: Scene = {
-  id: "living-1",
+  id: "living",
   place: "客厅",
   time: "20:37",
   title: "沙发上的第一次分组",

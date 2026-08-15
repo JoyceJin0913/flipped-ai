@@ -32,6 +32,6 @@ describe("scenes registry", () => {
   });
 
   it("getSceneById returns scene for known id", () => {
-    expect(getSceneById("kitchen-1")?.place).toBe("厨房");
+    expect(getSceneById("kitchen")?.place).toBe("厨房");
   });
 });
