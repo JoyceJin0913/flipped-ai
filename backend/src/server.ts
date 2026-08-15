@@ -15,6 +15,8 @@ dotenv.config({
 // dotenv 装载之后再 import llm.ts —— 否则模块顶层的环境变量读取会拿到 undefined
 const { chat } = await import("./llm.js");
 const { wenningSystemPrompt } = await import("./personas/wenning.js");
+const { scenes, getSceneById } = await import("../scenes/index.js");
+const { judgeChoice } = await import("./choice-judge.js");
 
 const app = express();
 app.use(express.json());
@@ -54,6 +56,45 @@ app.post("/api/chat", async (req, res) => {
 });
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+app.get("/api/scenes", (_req, res) => {
+  res.json(scenes.map((s) => ({ id: s.id, place: s.place, time: s.time, title: s.title })));
+});
+
+app.get("/api/scenes/:id", (req, res) => {
+  const scene = getSceneById(req.params.id);
+  if (!scene) return res.status(404).json({ error: "scene not found" });
+  res.json(scene);
+});
+
+app.post("/api/choice", async (req, res) => {
+  const { sceneId, choiceKey, worldState } = (req.body ?? {}) as {
+    sceneId?: string;
+    choiceKey?: string;
+    worldState?: { relationships?: Record<string, number>; recentHistory?: unknown[] };
+  };
+  if (typeof sceneId !== "string") return res.status(400).json({ error: "sceneId required" });
+  if (choiceKey !== "A" && choiceKey !== "B" && choiceKey !== "C") {
+    return res.status(400).json({ error: "choiceKey must be A/B/C" });
+  }
+  if (typeof worldState !== "object" || worldState === null) {
+    return res.status(400).json({ error: "worldState required" });
+  }
+  const scene = getSceneById(sceneId);
+  if (!scene) return res.status(404).json({ error: "scene not found" });
+
+  const ws = {
+    relationships: worldState.relationships ?? {},
+    recentHistory: (worldState.recentHistory ?? []) as Array<{ time: string; place: string; summary: string }>,
+  };
+  const result = await judgeChoice(scene, choiceKey, ws);
+  if (!result.ok) return res.status(500).json({ error: result.error, hint: result.hint });
+  res.json({
+    resultText: result.result.resultText,
+    effects: result.result.effects,
+    usage: result.usage,
+  });
+});
 
 const port = Number(process.env.PORT ?? 3001);
 app.listen(port, () => {
