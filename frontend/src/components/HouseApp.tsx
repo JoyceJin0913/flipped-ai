@@ -34,6 +34,8 @@ import {
   type Member,
 } from "@/data/house";
 import { RoomNight } from "@/components/RoomNight";
+import { useHouseState } from "@/hooks/useHouseState";
+import { postChoice } from "@/lib/api";
 
 
 type TabKey = "house" | "relationships" | "me";
@@ -66,6 +68,29 @@ export function HouseApp() {
   const [inRoom, setInRoom] = useState(false);
   const [dayEndSeen, setDayEndSeen] = useState(false);
 
+  const houseState = useHouseState();
+  const [dynamicResults, setDynamicResults] = useState<Record<string, { resultText: string }>>({});
+  const [loadingSceneId, setLoadingSceneId] = useState<string | null>(null);
+  // 后端 scene 覆盖：拉 /api/scenes/:id 拿新 dialogue/choices，key = scene id
+  const [backendScenes, setBackendScenes] = useState<Record<string, { dialogue: {who:string;line:string}[]; question: string; choices: {key:"A"|"B"|"C"; label:string}[] }>>({});
+
+  useEffect(() => {
+    (async () => {
+      const ids = ["kitchen", "living", "balcony"];
+      const next: Record<string, { dialogue: {who:string;line:string}[]; question: string; choices: {key:"A"|"B"|"C"; label:string}[] }> = {};
+      for (const id of ids) {
+        try {
+          const res = await fetch(`http://localhost:3001/api/scenes/${id}`);
+          if (res.ok) {
+            const s = await res.json();
+            next[id] = { dialogue: s.dialogue, question: s.question, choices: s.choices };
+          }
+        } catch { /* backend 未启动就用 house.ts */ }
+      }
+      setBackendScenes(next);
+    })();
+  }, []);
+
   useEffect(() => {
     setProgress(loadProgress());
     setHydrated(true);
@@ -77,6 +102,41 @@ export function HouseApp() {
       window.localStorage.setItem(STORY_KEY, JSON.stringify(p));
     } catch {
       /* ignore */
+    }
+  };
+
+  const handlePick = async (id: string, k: Choice["key"]) => {
+    setPicked((p) => ({ ...p, [id]: k }));
+    setLoadingSceneId(id);
+    try {
+      const scene = scenes.find((s) => s.id === id);
+      if (!scene) throw new Error("scene not found");
+      const chosenChoice = scene.choices.find((c) => c.key === k);
+      if (!chosenChoice) throw new Error("choice not found");
+
+      const res = await postChoice({
+        sceneId: id,
+        choiceKey: k,
+        worldState: {
+          relationships: houseState.relationships,
+          recentHistory: houseState.history,
+        },
+      });
+      setDynamicResults((prev) => ({ ...prev, [id]: { resultText: res.resultText } }));
+      houseState.applyEffects(res.effects);
+      houseState.pushHistory({
+        time: scene.time,
+        place: scene.place,
+        summary: `选了 ${k}（${chosenChoice.label}）`,
+      });
+    } catch (err) {
+      console.error("[choice] failed:", err);
+      setDynamicResults((prev) => ({
+        ...prev,
+        [id]: { resultText: "（剧情判定失败，请重试）" },
+      }));
+    } finally {
+      setLoadingSceneId(null);
     }
   };
 
@@ -92,9 +152,12 @@ export function HouseApp() {
             <StoryFlow
               startIndex={progress.index}
               picked={picked}
-              onPick={(id, k) => setPicked((p) => ({ ...p, [id]: k }))}
+              onPick={handlePick}
               onStep={(i) => saveProgress({ index: i, done: false })}
               onFinish={() => saveProgress({ index: storySequence.length - 1, done: true })}
+              dynamicResults={dynamicResults}
+              loadingSceneId={loadingSceneId}
+              backendScenes={backendScenes}
             />
           ) : inRoom ? (
             <RoomNight chatLog={chatLog} onLeave={() => setInRoom(false)} />
@@ -105,7 +168,7 @@ export function HouseApp() {
               chatLog={chatLog}
               onLog={(e) => setChatLog((l) => [...l, e])}
               onOpen={(s) => setOpenScene(s)}
-              onPick={(id, k) => setPicked((p) => ({ ...p, [id]: k }))}
+              onPick={handlePick}
               onBack={() => setOpenScene(null)}
               onReplay={() => saveProgress({ index: 0, done: false })}
               canEnterRoom={talkedCount >= 3}
@@ -113,6 +176,9 @@ export function HouseApp() {
                 setOpenScene(null);
                 setInRoom(true);
               }}
+              dynamicResults={dynamicResults}
+              loadingSceneId={loadingSceneId}
+              backendScenes={backendScenes}
             />
           ))}
         {tab === "relationships" && <RelationshipsView />}
@@ -166,18 +232,27 @@ function StoryFlow({
   onPick,
   onStep,
   onFinish,
+  dynamicResults,
+  loadingSceneId,
+  backendScenes,
 }: {
   startIndex: number;
   picked: Picked;
   onPick: (id: string, k: Choice["key"]) => void;
   onStep: (i: number) => void;
   onFinish: () => void;
+  dynamicResults: Record<string, { resultText: string }>;
+  loadingSceneId: string | null;
+  backendScenes: Record<string, { dialogue: {who:string;line:string}[]; question: string; choices: {key:"A"|"B"|"C"; label:string}[] }>;
 }) {
   const [index, setIndex] = useState(startIndex);
   const [transition, setTransition] = useState<string | null>(null);
   const [ending, setEnding] = useState(false);
 
   const scene = scenes.find((s) => s.id === storySequence[index]);
+  const mergedScene: Scene | undefined = scene && backendScenes[scene.id]
+    ? { ...scene, dialogue: backendScenes[scene.id]!.dialogue, question: backendScenes[scene.id]!.question, choices: backendScenes[scene.id]!.choices.map(c => ({ ...c, result: "", effects: [] })) }
+    : scene;
 
   const next = () => {
     const text = storyTransitions[index] ?? "……";
@@ -220,7 +295,7 @@ function StoryFlow({
   }
 
 
-  if (!scene) return null;
+  if (!mergedScene) return null;
 
   return (
     <div className="relative">
@@ -238,11 +313,13 @@ function StoryFlow({
       </div>
 
       <SceneView
-        scene={scene}
-        picked={picked[scene.id]}
-        onPick={(k) => onPick(scene.id, k)}
+        scene={mergedScene}
+        picked={picked[mergedScene.id]}
+        onPick={(k) => onPick(mergedScene.id, k)}
         onBack={next}
         storyMode
+        dynamicResult={dynamicResults[mergedScene.id]}
+        loading={loadingSceneId === mergedScene.id}
       />
 
       {transition && (
@@ -267,6 +344,9 @@ function HouseContent({
   onReplay,
   canEnterRoom,
   onEnterRoom,
+  dynamicResults,
+  loadingSceneId,
+  backendScenes,
 }: {
   openScene: Scene | null;
   picked: Picked;
@@ -278,14 +358,22 @@ function HouseContent({
   onReplay: () => void;
   canEnterRoom: boolean;
   onEnterRoom: () => void;
+  dynamicResults: Record<string, { resultText: string }>;
+  loadingSceneId: string | null;
+  backendScenes: Record<string, { dialogue: {who:string;line:string}[]; question: string; choices: {key:"A"|"B"|"C"; label:string}[] }>;
 }) {
   if (openScene) {
+    const merged: Scene = backendScenes[openScene.id]
+      ? { ...openScene, dialogue: backendScenes[openScene.id]!.dialogue, question: backendScenes[openScene.id]!.question, choices: backendScenes[openScene.id]!.choices.map(c => ({ ...c, result: "", effects: [] })) }
+      : openScene;
     return (
       <SceneView
-        scene={openScene}
-        picked={picked[openScene.id]}
-        onPick={(k) => onPick(openScene.id, k)}
+        scene={merged}
+        picked={picked[merged.id]}
+        onPick={(k) => onPick(merged.id, k)}
         onBack={onBack}
+        dynamicResult={dynamicResults[merged.id]}
+        loading={loadingSceneId === merged.id}
       />
     );
   }
@@ -733,14 +821,17 @@ function SceneView({
   onPick,
   onBack,
   storyMode,
+  dynamicResult,
+  loading,
 }: {
   scene: Scene;
   picked?: Choice["key"] | undefined;
   onPick: (k: Choice["key"]) => void;
   onBack: () => void;
   storyMode?: boolean;
+  dynamicResult?: { resultText: string } | undefined;
+  loading?: boolean;
 }) {
-  const chosen = scene.choices.find((c) => c.key === picked);
 
   return (
     <div className="animate-fade-in">
@@ -809,53 +900,53 @@ function SceneView({
 
 
         <div className="mt-4 space-y-3">
-          {scene.choices.map((c, i) => {
-            const active = picked === c.key;
+          {scene.choices
+            .filter((c) => (dynamicResult ? picked === c.key : true))
+            .map((c, i) => {
+              const active = picked === c.key;
 
-            return (
-              <button
-                key={c.key}
-                onClick={() => onPick(c.key)}
-                className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${
-                  active
-                    ? "border-primary bg-secondary shadow-glow"
-                    : "border-border bg-card/70 hover:bg-secondary/60"
-                }`}
-              >
-                <span
-                  className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold ${
-                    active ? "bg-romance text-primary-foreground" : "bg-secondary text-muted-foreground"
-                  }`}
+              return (
+                <button
+                  key={c.key}
+                  onClick={() => onPick(c.key)}
+                  disabled={loading || !!dynamicResult}
+                  className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${
+                    active
+                      ? "border-primary bg-secondary shadow-glow"
+                      : "border-border bg-card/70 hover:bg-secondary/60"
+                  } ${loading || dynamicResult ? "cursor-default" : ""} ${loading ? "opacity-50" : ""}`}
                 >
-                  {i + 1}
-                </span>
-                <span className="text-sm">{c.label}</span>
-              </button>
-            );
-          })}
+                  <span
+                    className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                      active ? "bg-romance text-primary-foreground" : "bg-secondary text-muted-foreground"
+                    }`}
+                  >
+                    {dynamicResult ? scene.choices.findIndex((x) => x.key === c.key) + 1 : i + 1}
+                  </span>
+                  <span className="text-sm">{c.label}</span>
+                </button>
+              );
+            })}
         </div>
 
-        {chosen && (
-          <div className="mt-5 rounded-2xl glass-card p-4">
-            <p className="text-xs tracking-widest text-accent">剧情走向</p>
-            <p className="mt-2 text-sm leading-relaxed">{chosen.result}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {chosen.effects.map((e) => (
-                <span
-                  key={e.name}
-                  className="rounded-full bg-secondary px-3 py-1 text-[11px] text-foreground/90"
-                >
-                  {e.name} {e.delta > 0 ? `+${e.delta}` : e.delta}
-                </span>
-              ))}
+        {loading && (
+          <div className="mt-5 rounded-2xl glass-card p-4 text-center text-sm text-muted-foreground">
+            …
+          </div>
+        )}
+        {!loading && dynamicResult && (
+          <>
+            <div className="mt-5 rounded-2xl glass-card p-4">
+              <p className="text-xs tracking-widest text-accent">剧情走向</p>
+              <p className="mt-2 text-sm leading-relaxed">{dynamicResult.resultText}</p>
             </div>
             <button
               onClick={onBack}
-              className="mt-4 w-full rounded-full bg-romance py-3 text-sm font-semibold text-primary-foreground"
+              className="mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
             >
-              {storyMode ? "继续" : "回到小屋"}
+              {storyMode ? "下一件事" : "返回小屋"}
             </button>
-          </div>
+          </>
         )}
         <div className="h-8" />
       </div>

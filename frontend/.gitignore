@@ -16,6 +16,11 @@ dist-ssr
 .nitro
 *.local
 
+# Env — 绝不能提交
+.env
+.env.*
+!.env.example
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
