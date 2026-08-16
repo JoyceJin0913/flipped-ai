@@ -2,6 +2,76 @@
 
 > AI 驱动的恋综互动游戏 —— 七天六夜的心动实验
 
+---
+
+## 🚀 快速开始（合并版 · 推荐）
+
+**合并版** = Joyce 的前端小屋 + 后端 LLM 判定 + 借用了 Lisi 版的 4 阶段冷启动 UI（建档 → 人格测试 → 匹配池 → 登岛动画）拼在同一个 HTML 里。这是目前**最完整的可玩版本**。
+
+### 一次性准备
+
+1. **拿到火山方舟豆包 API Key**（用于后端 LLM 判定）
+   - 控制台：https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey
+   - 创建 API Key，复制 `sk-xxx` 那串
+
+2. **配置环境变量**
+   ```bash
+   cd flipped-ai/frontend
+   cp .env.local.example .env.local   # 如果 .env.local 不存在
+   # 编辑 .env.local，填入：
+   # ARK_API_KEY=你的key
+   ```
+   > 后端会优先读 `backend/.env`，没有则回退读 `frontend/.env.local`。两处任选其一即可。
+
+3. **安装依赖**（前后端各一次）
+   ```bash
+   cd flipped-ai/backend && npm install
+   cd flipped-ai/frontend && npm install
+   ```
+
+### 启动（每次开发都要跑）
+
+**开两个终端窗口。**
+
+**终端 1 · 启动后端**（端口 3001）
+```bash
+cd flipped-ai/backend
+npm run dev
+# 看到 "Server listening on http://localhost:3001" 即成功
+```
+
+**终端 2 · 启动前端**（端口 8080 起，占用则依次 8081 / 8082…）
+```bash
+cd flipped-ai/frontend
+npm run dev
+# 看到 "Local: http://localhost:8080/" 即成功（端口可能被占用会自动 +1）
+```
+
+### 打开浏览器
+
+访问终端 2 输出的 `Local:` 地址（比如 http://localhost:8080/）。
+
+**首次进入会走 4 阶段冷启动**：
+1. 建档（姓名/性别/年龄/星座）
+2. 12 题人格测试（MBTI + 依恋型）
+3. 8 选 5 匹配池
+4. 登岛开场动画
+5. → 进入 Day 4 心动小屋主玩法（3 个场景 / 时间轴 / 结局页 / 分享海报）
+
+**想重玩 onboarding**：
+- 浏览器 F12 → Application → Local Storage → 删掉 `flipped-ai-onboarding` → 刷新
+
+### 常见问题
+
+| 症状 | 原因 | 解决 |
+|---|---|---|
+| 剧情走向显示"剧情判定失败，请重试" | 后端没启动 / API Key 无效 | 检查终端 1 是否在跑；测试 `curl http://localhost:3001/health` |
+| 小屋 scene 里对话是硬编码版本（不是重写版） | 后端 `/api/scenes/:id` 返回失败 | 检查终端 1 日志 |
+| 页面白屏 / 样式错乱 | 前端 dev server 没起来 | 检查终端 2 是否报错 |
+| onboarding 阶段卡住不能下一步 | 表单必填项没填全 | 4 个字段都要选 |
+
+---
+
 ## ✨ 项目概览
 
 **心动岛** 是一款基于 PRD 文档完整实现的 AI 恋综互动游戏。玩家扮演一档恋爱综艺的嘉宾，在七天六夜的岛居生活中，通过对话选择、心动投票和事件决策，与 5 位 NPC 嘉宾 + 4 位竞争者发展关系，最终找到自己的心动对象。
