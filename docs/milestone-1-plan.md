@@ -219,5 +219,5 @@ Claude 应该按这个方案：
 ### 后续待办
 - [ ] 温宁 system prompt 试聊几轮后决定要不要精简
 - [ ] 里程碑 2 时接入 TanStack Start，走动态路由
-- [ ] `frontend/.env.local` 里的 `ARK_API_KEY` 曾在截图暴露过（`ark-4cd63f70-...`），有空去火山方舟停用重建
+- [ ] `frontend/.env.local` 里的 `ARK_API_KEY` 曾在截图暴露过（`ark-<REDACTED>`），有空去火山方舟停用重建
 
