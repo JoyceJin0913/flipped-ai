@@ -1,11 +1,3 @@
-# macOS
-.DS_Store
-
-# Editor
-.vscode/
-.idea/
-*.swp
-
 # Dependencies
 node_modules/
 
@@ -15,17 +7,26 @@ dist/
 .nitro/
 .tanstack/
 
-# Env
+# Env (含 API key，禁止提交)
 .env
 .env.local
 .env.*.local
+server/.env
 
 # Logs
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
 # Cache
 .cache/
-.parcel-cache/
+
+# Core dumps
+core.*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
