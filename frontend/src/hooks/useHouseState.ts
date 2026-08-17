@@ -7,11 +7,11 @@ const INITIAL_RELATIONSHIPS: Record<string, number> = {
   "林一 × 苏杳 心动值": 34,
   "林一 × 沈知 信任度": 40,
   "温宁 × 沈知 信任度": 55,
-  "紧张感": 0,
-  "信任度": 50,
-  "悬念值": 0,
-  "意外度": 0,
-  "林一的信息差": 0,
+  紧张感: 0,
+  信任度: 50,
+  悬念值: 0,
+  意外度: 0,
+  林一的信息差: 0,
 };
 
 export function useHouseState() {

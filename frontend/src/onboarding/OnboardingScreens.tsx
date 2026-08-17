@@ -21,17 +21,31 @@ import type { MbtiAnswer, AttachmentAnswer } from "./scoring";
 import { getNpcById, getSameGenderNpcs } from "./npcLibrary";
 import type { PlayerGender, Zodiac, MBTI } from "./types";
 import {
-  TopBar, PrimaryButton, GhostButton, Avatar, Chip,
-  ATTACHMENT_LABELS, ATTACHMENT_DESC, TIER_LABELS, TIER_STYLES, SectionTitle,
+  TopBar,
+  PrimaryButton,
+  GhostButton,
+  Avatar,
+  Chip,
+  ATTACHMENT_LABELS,
+  ATTACHMENT_DESC,
+  TIER_LABELS,
+  TIER_STYLES,
+  SectionTitle,
 } from "./shared";
 
 const ZODIAC_LIST: { key: Zodiac; label: string }[] = [
-  { key: "aries", label: "白羊" }, { key: "taurus", label: "金牛" },
-  { key: "gemini", label: "双子" }, { key: "cancer", label: "巨蟹" },
-  { key: "leo", label: "狮子" }, { key: "virgo", label: "处女" },
-  { key: "libra", label: "天秤" }, { key: "scorpio", label: "天蝎" },
-  { key: "sagittarius", label: "射手" }, { key: "capricorn", label: "摩羯" },
-  { key: "aquarius", label: "水瓶" }, { key: "pisces", label: "双鱼" },
+  { key: "aries", label: "白羊" },
+  { key: "taurus", label: "金牛" },
+  { key: "gemini", label: "双子" },
+  { key: "cancer", label: "巨蟹" },
+  { key: "leo", label: "狮子" },
+  { key: "virgo", label: "处女" },
+  { key: "libra", label: "天秤" },
+  { key: "scorpio", label: "天蝎" },
+  { key: "sagittarius", label: "射手" },
+  { key: "capricorn", label: "摩羯" },
+  { key: "aquarius", label: "水瓶" },
+  { key: "pisces", label: "双鱼" },
 ];
 
 // ============================================================
@@ -80,9 +94,7 @@ export function ProfileSetup() {
 
         <div className="animate-fade-in space-y-6">
           <div>
-            <label className="mb-2 block text-xs font-medium text-muted-foreground">
-              你的名字
-            </label>
+            <label className="mb-2 block text-xs font-medium text-muted-foreground">你的名字</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -97,10 +109,10 @@ export function ProfileSetup() {
               你的性别（决定小屋里的异性阵容）
             </label>
             <div className="grid grid-cols-2 gap-3">
-              {([
+              {[
                 { key: "male" as PlayerGender, label: "男生", tone: "male" as const },
                 { key: "female" as PlayerGender, label: "女生", tone: "female" as const },
-              ]).map((g) => (
+              ].map((g) => (
                 <button
                   key={g.key}
                   onClick={() => setGender(g.key)}
@@ -117,9 +129,7 @@ export function ProfileSetup() {
           </div>
 
           <div>
-            <label className="mb-2 block text-xs font-medium text-muted-foreground">
-              你的年龄
-            </label>
+            <label className="mb-2 block text-xs font-medium text-muted-foreground">你的年龄</label>
             <div className="grid grid-cols-5 gap-2">
               {Array.from({ length: 15 }, (_, i) => i + 18).map((a) => (
                 <button
@@ -138,9 +148,7 @@ export function ProfileSetup() {
           </div>
 
           <div>
-            <label className="mb-2 block text-xs font-medium text-muted-foreground">
-              你的星座
-            </label>
+            <label className="mb-2 block text-xs font-medium text-muted-foreground">你的星座</label>
             <div className="grid grid-cols-4 gap-2">
               {ZODIAC_LIST.map((z) => (
                 <button
@@ -185,10 +193,10 @@ export function PersonalityTest() {
 
   const [step, setStep] = useState(0); // 0-11
   const [mbtiAnswers, setMbtiAnswers] = useState<(MbtiAnswer | undefined)[]>(
-    Array(8).fill(undefined)
+    Array(8).fill(undefined),
   );
   const [attachAnswers, setAttachAnswers] = useState<(AttachmentAnswer | undefined)[]>(
-    Array(4).fill(undefined)
+    Array(4).fill(undefined),
   );
   const [done, setDone] = useState(false);
 
@@ -197,7 +205,7 @@ export function PersonalityTest() {
 
   const result = useMemo(
     () => (done ? calcTestResult(mbtiAnswers, attachAnswers) : null),
-    [done, mbtiAnswers, attachAnswers]
+    [done, mbtiAnswers, attachAnswers],
   );
 
   const pick = (value: MbtiAnswer | AttachmentAnswer) => {
@@ -275,12 +283,14 @@ export function PersonalityTest() {
           <div className="glass-card rounded-3xl p-5">
             <SectionTitle hint="A / B 选择计分">四轴分布</SectionTitle>
             <div className="space-y-3">
-              {([
-                ["E", "I", "外向 / 内向"],
-                ["S", "N", "实感 / 直觉"],
-                ["T", "F", "思考 / 情感"],
-                ["J", "P", "判断 / 知觉"],
-              ] as const).map(([a, b, label]) => {
+              {(
+                [
+                  ["E", "I", "外向 / 内向"],
+                  ["S", "N", "实感 / 直觉"],
+                  ["T", "F", "思考 / 情感"],
+                  ["J", "P", "判断 / 知觉"],
+                ] as const
+              ).map(([a, b, label]) => {
                 const va = result.raw.axes[a] ?? 0;
                 const vb = result.raw.axes[b] ?? 0;
                 const totalAxis = Math.max(1, va + vb);
@@ -296,14 +306,8 @@ export function PersonalityTest() {
                       </span>
                     </div>
                     <div className="flex h-1.5 overflow-hidden rounded-full bg-secondary/70">
-                      <div
-                        className="bg-male"
-                        style={{ width: `${(va / totalAxis) * 100}%` }}
-                      />
-                      <div
-                        className="bg-female"
-                        style={{ width: `${(vb / totalAxis) * 100}%` }}
-                      />
+                      <div className="bg-male" style={{ width: `${(va / totalAxis) * 100}%` }} />
+                      <div className="bg-female" style={{ width: `${(vb / totalAxis) * 100}%` }} />
                     </div>
                   </div>
                 );
@@ -311,9 +315,7 @@ export function PersonalityTest() {
             </div>
           </div>
 
-          <PrimaryButton onClick={handleEnterMatching}>
-            查看为你匹配的候选人
-          </PrimaryButton>
+          <PrimaryButton onClick={handleEnterMatching}>查看为你匹配的候选人</PrimaryButton>
         </div>
       </div>
     );
@@ -414,7 +416,7 @@ export function MatchingSelection() {
 
   const toggle = (id: string) => {
     setSelected((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < need ? [...prev, id] : prev
+      prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < need ? [...prev, id] : prev,
     );
   };
 

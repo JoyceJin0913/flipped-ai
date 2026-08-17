@@ -594,7 +594,7 @@ export const finaleVerdict = {
 
 /** 结语页开头的 slogan：描述这个人的恋爱特征 */
 export const finaleSlogan = {
-  line: "我不是慢热，我只是怕打扰你",
+  line: "一个慢，但不会回头的人",
   sub: "SLOW TO SPEAK · QUICK TO STAY",
   desc: "七天里你 13 次先开口，却没有一次先要答案。",
 };

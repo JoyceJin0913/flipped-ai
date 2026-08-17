@@ -8,15 +8,9 @@
  */
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { PlayerProfile, NPC, TestResult } from "../onboarding/types";
-import type { CandidateInfo } from "../onboarding/scoring";
+import type { PlayerProfile, NPC, TestResult, CandidateInfo } from "../onboarding/types";
 
-export type OnboardingPhase =
-  | "profile_setup"
-  | "personality_test"
-  | "matching"
-  | "intro"
-  | "done";
+export type OnboardingPhase = "profile_setup" | "personality_test" | "matching" | "intro" | "done";
 
 interface State {
   phase: OnboardingPhase;
@@ -64,6 +58,6 @@ export const useGameStore = create<State>()(
     {
       name: "flipped-ai-onboarding",
       version: 1,
-    }
-  )
+    },
+  ),
 );

@@ -15,16 +15,37 @@ export type PlayerGender = "male" | "female";
 
 /** MBTI 十六型（完整枚举） */
 export type MBTI =
-  | "INTJ" | "INTP" | "ENTJ" | "ENTP"
-  | "INFJ" | "INFP" | "ENFJ" | "ENFP"
-  | "ISTJ" | "ISFJ" | "ESTJ" | "ESFJ"
-  | "ISTP" | "ISFP" | "ESTP" | "ESFP";
+  | "INTJ"
+  | "INTP"
+  | "ENTJ"
+  | "ENTP"
+  | "INFJ"
+  | "INFP"
+  | "ENFJ"
+  | "ENFP"
+  | "ISTJ"
+  | "ISFJ"
+  | "ESTJ"
+  | "ESFJ"
+  | "ISTP"
+  | "ISFP"
+  | "ESTP"
+  | "ESFP";
 
 /** 十二星座 */
 export type Zodiac =
-  | "aries" | "taurus" | "gemini" | "cancer"
-  | "leo" | "virgo" | "libra" | "scorpio"
-  | "sagittarius" | "capricorn" | "aquarius" | "pisces";
+  | "aries"
+  | "taurus"
+  | "gemini"
+  | "cancer"
+  | "leo"
+  | "virgo"
+  | "libra"
+  | "scorpio"
+  | "sagittarius"
+  | "capricorn"
+  | "aquarius"
+  | "pisces";
 
 /** 依恋类型（§12.1 判定结果） */
 export type AttachmentType = "secure" | "anxious" | "avoidant";
@@ -123,10 +144,10 @@ export interface AttachmentRules {
 
 /** 关系阶段（§12.3 阶段系数对应） */
 export type RelationshipStage =
-  | "stranger"   // 0-20: 陌生人
-  | "icebreak"   // 21-45: 破冰
-  | "flirt"      // 46-70: 暧昧
-  | "crush";     // 71-100: 心动
+  | "stranger" // 0-20: 陌生人
+  | "icebreak" // 21-45: 破冰
+  | "flirt" // 46-70: 暧昧
+  | "crush"; // 71-100: 心动
 
 export const STAGE_THRESHOLDS: Record<RelationshipStage, [number, number]> = {
   stranger: [0, 20],
@@ -212,17 +233,9 @@ export const INTENT_COLORS: Record<IntentType, string> = {
 // §4.6 场景 & 阶段
 // ============================================================
 
-export type SceneKey =
-  | "private_day"
-  | "private_night"
-  | "public_chat"
-  | "public_date";
+export type SceneKey = "private_day" | "private_night" | "public_chat" | "public_date";
 
-export type StageKey =
-  | "stranger"
-  | "icebreak"
-  | "flirt"
-  | "crush";
+export type StageKey = "stranger" | "icebreak" | "flirt" | "crush";
 
 // ============================================================
 // §4.7 经济系统
@@ -323,13 +336,13 @@ export interface HeartVote {
 // ============================================================
 
 export type GamePhase =
-  | "profile_setup"    // 建档案
+  | "profile_setup" // 建档案
   | "personality_test" // 人格测试
-  | "matching"         // 8选5
-  | "intro"            // 开场动画
-  | "day_loop"         // 日循环主玩法
-  | "finale"           // 终选之夜
-  | "review";          // 复盘画像
+  | "matching" // 8选5
+  | "intro" // 开场动画
+  | "day_loop" // 日循环主玩法
+  | "finale" // 终选之夜
+  | "review"; // 复盘画像
 
 // ============================================================
 // §4.13 辅助类型
