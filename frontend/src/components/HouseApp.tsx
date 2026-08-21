@@ -175,11 +175,19 @@ export function HouseApp() {
     !inRoom &&
     !eventDayDone &&
     (hasIslandData || !progress.done);
+  // 公共事件结束后会先回到自由小屋。只有当天与 3 位不同嘉宾
+  // 完成私聊后，才进入回房复盘阶段；重复聊同一人不重复计数。
+  const talkedCount = new Set(chatLog.map((entry) => entry.name)).size;
   const showDayEnd =
-    tab === "house" && island.phase === "day_loop" && !inRoom && !dayEndSeen && eventDayDone;
+    tab === "house" &&
+    island.phase === "day_loop" &&
+    !inRoom &&
+    !dayEndSeen &&
+    eventDayDone &&
+    talkedCount >= 3;
 
   // Day 7 三件事播完时 store.phase 已被 EventFlow 切为 "finale" → 直接进结局页；
-  // 1-6 天 → 弹 DayEnd overlay（文案不再依赖 talkedCount>=3）
+  // 1-6 天 → 先回自由小屋，完成 3 位不同嘉宾的私聊后再弹 DayEnd overlay。
   const handleDayFinished = () => {
     if (useIslandStore.getState().phase === "finale") {
       setFinaleOpen(true);
@@ -192,6 +200,7 @@ export function HouseApp() {
   // 离开房间 → 进下一天：advanceDay 重置 eventIndex=0，自动进入次日事件流
   const handleRoomLeave = () => {
     useIslandStore.getState().advanceDay();
+    setChatLog([]);
     setDayEndSeen(false);
     setEventDayDone(false);
     setInRoom(false);
@@ -236,7 +245,7 @@ export function HouseApp() {
               onPick={handlePick}
               onBack={() => setOpenScene(null)}
               onReplay={handleReplayDay}
-              canEnterRoom={island.phase === "day_loop"}
+              canEnterRoom={island.phase === "day_loop" && eventDayDone && talkedCount >= 3}
               onEnterRoom={() => {
                 setOpenScene(null);
                 setInRoom(true);

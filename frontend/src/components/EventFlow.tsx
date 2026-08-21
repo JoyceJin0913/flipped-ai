@@ -227,7 +227,9 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
     }
 
     setParaIndex(0);
-    setStage("narration");
+    // 决策事件延续旧版 SceneView 的阅读节奏：事件引导和选项
+    // 进入时就同屏呈现，不再先经过一个只有旁白的中间页。
+    setStage(event.kind === "decision" ? "decision" : "narration");
   }, [day, eventIndex, phase, daySpec, event]);
 
   if (phase !== "day_loop" || !daySpec || !event) return null;
@@ -405,7 +407,11 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
           )}
 
           {stage === "decision" && decisionResult && (
-            <DecisionView result={decisionResult} onOption={onOptionClick} />
+            <DecisionView
+              contextLines={event.narration.map((line) => fillText(line, ctx))}
+              result={decisionResult}
+              onOption={onOptionClick}
+            />
           )}
 
           {stage === "open" && event.kind === "open" && (
@@ -505,14 +511,28 @@ function defaultSelection(sel: NpcSelectorSpec, ctx: EngineContext): string | nu
 // ============================================================
 
 function DecisionView({
+  contextLines,
   result,
   onOption,
 }: {
+  contextLines: string[];
   result: BuildOptionsResult;
   onOption: (ro: RenderedOption) => void;
 }) {
   return (
-    <div className="mt-2 space-y-3">
+    <div className="mt-2 animate-fade-in">
+      <div className="rounded-3xl glass-card p-5">
+        <p className="text-xs tracking-[0.24em] text-accent">此刻，你会怎么做？</p>
+        <div className="mt-3 space-y-2">
+          {contextLines.map((line, index) => (
+            <p key={index} className="text-[15px] leading-7 text-foreground/90">
+              {line}
+            </p>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
       {result.options.map((ro) => {
         const silent = ro.option.slot === "C";
         return (
@@ -552,6 +572,7 @@ function DecisionView({
           </button>
         );
       })}
+      </div>
       {result.warnings.length > 0 && (
         <p className="text-center text-xs text-amber-400/80">（{result.warnings.join("；")}）</p>
       )}
