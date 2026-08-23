@@ -7,7 +7,6 @@ import {
   storyTransitions,
   members,
   hotspots,
-  microEvents,
   dateCard,
   genderOf,
   affinities,
@@ -24,6 +23,7 @@ import {
 import { RoomNight } from "@/components/RoomNight";
 import { FinaleReport } from "@/components/FinaleReport";
 import { EventFlow } from "@/components/EventFlow";
+import { getDay } from "@/data/events";
 import { useIslandStore } from "@/stores/useIslandStore";
 import { getHeartSignal, type HeartSignal } from "@/core/heartSignal";
 import { getNpcById } from "@/onboarding/npcLibrary";
@@ -213,6 +213,13 @@ export function HouseApp() {
     setDayEndSeen(false);
   };
 
+  // 从小屋卡片重看当天指定事件；结算层按事件 id 幂等处理，不会重复累加数值。
+  const handleReplayEvent = (index: number) => {
+    useIslandStore.setState({ eventIndex: Math.max(0, Math.min(2, index)) });
+    setEventDayDone(false);
+    setDayEndSeen(false);
+  };
+
   return (
     <div className="relative mx-auto flex min-h-screen w-full max-w-md flex-col bg-background">
       <div className={inStory ? "flex-1" : "flex-1 pb-24"}>
@@ -245,6 +252,7 @@ export function HouseApp() {
               onPick={handlePick}
               onBack={() => setOpenScene(null)}
               onReplay={handleReplayDay}
+              onReplayEvent={handleReplayEvent}
               canEnterRoom={island.phase === "day_loop" && eventDayDone && talkedCount >= 3}
               onEnterRoom={() => {
                 setOpenScene(null);
@@ -430,6 +438,7 @@ function HouseContent({
   onPick,
   onBack,
   onReplay,
+  onReplayEvent,
   canEnterRoom,
   onEnterRoom,
   onOpenFinale,
@@ -445,6 +454,7 @@ function HouseContent({
   onPick: (id: string, k: Choice["key"]) => void;
   onBack: () => void;
   onReplay: () => void;
+  onReplayEvent: (index: number) => void;
   canEnterRoom: boolean;
   onEnterRoom: () => void;
   onOpenFinale: () => void;
@@ -486,11 +496,11 @@ function HouseContent({
 
   return (
     <HomeView
-      picked={picked}
       chatLog={chatLog}
       onLog={onLog}
       onOpen={onOpen}
       onReplay={onReplay}
+      onReplayEvent={onReplayEvent}
       canEnterRoom={canEnterRoom}
       onEnterRoom={onEnterRoom}
       onOpenFinale={onOpenFinale}
@@ -500,28 +510,34 @@ function HouseContent({
 
 const ROOMS = ["客厅", "厨房", "阳台"] as const;
 
+function eventImageFor(location: string) {
+  if (/阳台|海边|庭院|户外|篝火/.test(location)) return scenes[2]!.image;
+  if (/厨房|料理|餐厅/.test(location)) return scenes[0]!.image;
+  return scenes[1]!.image;
+}
+
 function HomeView({
-  picked,
   chatLog,
   onLog,
   onOpen,
   onReplay,
+  onReplayEvent,
   canEnterRoom,
   onEnterRoom,
   onOpenFinale,
 }: {
-  picked: Picked;
   chatLog: ChatLogEntry[];
   onLog: (e: ChatLogEntry) => void;
   onOpen: (s: Scene) => void;
   onReplay: () => void;
+  onReplayEvent: (index: number) => void;
   canEnterRoom: boolean;
   onEnterRoom: () => void;
   onOpenFinale: () => void;
 }) {
-  const allScenes = scenes;
   const hero = scenes[1]!;
   const day = useIslandStore((s) => s.day);
+  const todayEvents = getDay(day)?.events ?? [];
   const [who, setWho] = useState<Member | null>(null);
   const [chatWith, setChatWith] = useState<Member | null>(null);
 
@@ -615,45 +631,31 @@ function HomeView({
 
         <h3 className="mt-3 text-sm font-medium text-accent">三件事</h3>
         <ul className="mt-2 space-y-3">
-          {allScenes.map((s) => (
-            <li key={s.id}>
+          {todayEvents.map((event, index) => (
+            <li key={event.id}>
               <button
-                onClick={() => onOpen(s)}
+                onClick={() => onReplayEvent(index)}
                 className="flex w-full items-center gap-3 rounded-2xl glass-card p-3 text-left transition-colors hover:bg-secondary/60"
               >
                 <img
-                  src={s.image}
-                  alt={s.title}
+                  src={eventImageFor(event.location)}
+                  alt={event.title}
                   loading="lazy"
                   width={1024}
                   height={1280}
                   className="size-14 shrink-0 rounded-xl object-cover"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{s.title}</p>
+                  <p className="truncate text-sm font-medium">{event.title}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {s.place} · {s.time}
+                    {event.location} · {event.timeLabel}
                   </p>
                 </div>
-                {picked[s.id] ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-1 text-[11px] text-accent">
-                    <Check className="size-3" /> 已看
-                  </span>
-                ) : (
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                )}
+                <span className="shrink-0 rounded-full bg-secondary px-2 py-1 text-[10px] text-accent">
+                  {event.kind === "decision" ? "选择事件" : "剧情事件"}
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               </button>
-            </li>
-          ))}
-          {microEvents.map((e) => (
-            <li
-              key={e.time}
-              className="flex items-start gap-3 rounded-2xl border border-border/60 px-3 py-2.5"
-            >
-              <span className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
-                {e.time}
-              </span>
-              <p className="text-xs leading-relaxed text-muted-foreground">{e.text}</p>
             </li>
           ))}
         </ul>
