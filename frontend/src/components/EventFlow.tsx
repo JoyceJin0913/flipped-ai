@@ -651,7 +651,7 @@ function OpenView({
         </div>
         <button
           onClick={onContinue}
-          className="mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
+          className="mb-8 mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
         >
           继续
         </button>
@@ -688,7 +688,7 @@ function OpenView({
           ),
         )}
       </div>
-      <div className="mt-auto pt-6">
+      <div className="mt-auto pb-8 pt-6">
         {!done && (
           <button
             onClick={() => setShown((s) => s + 1)}
