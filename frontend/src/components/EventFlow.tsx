@@ -19,6 +19,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft } from "lucide-react";
 import { useIslandStore } from "@/stores/useIslandStore";
 import { getDay } from "@/data/events";
 import type {
@@ -143,7 +144,15 @@ function applyResult(
 // 主组件
 // ============================================================
 
-export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
+export function EventFlow({
+  onDayFinished,
+  singleEvent = false,
+  onSingleEventExit,
+}: {
+  onDayFinished?: () => void;
+  singleEvent?: boolean;
+  onSingleEventExit?: () => void;
+}) {
   const state = useIslandStore();
   const { phase, day, eventIndex } = state;
 
@@ -256,6 +265,10 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
   };
 
   const advance = () => {
+    if (singleEvent) {
+      onSingleEventExit?.();
+      return;
+    }
     const st = useIslandStore.getState();
     if (st.eventIndex >= 2) {
       finishDay(st);
@@ -383,16 +396,26 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
       />
       <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-xl flex-col px-5 pb-12 pt-14 animate-fade-in">
         <div className="mb-6">
-          <div className="flex items-center justify-center gap-1.5">
-            {daySpec.events.map((_, i) => (
-              <span
-                key={i}
-                className={`h-1 w-8 rounded-full transition-colors ${
-                  i <= eventIndex ? "bg-primary" : "bg-border"
-                }`}
-              />
-            ))}
-          </div>
+          {singleEvent ? (
+            <button
+              type="button"
+              onClick={onSingleEventExit}
+              className="inline-flex items-center gap-1 rounded-full border border-border/70 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+            >
+              <ChevronLeft className="size-4" /> 返回
+            </button>
+          ) : (
+            <div className="flex items-center justify-center gap-1.5">
+              {daySpec.events.map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-1 w-8 rounded-full transition-colors ${
+                    i <= eventIndex ? "bg-primary" : "bg-border"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
           <div className="mt-4 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs tracking-[0.3em] text-muted-foreground">
@@ -439,7 +462,13 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
           )}
 
           {stage === "open" && event.kind === "open" && (
-            <OpenView key={event.id} event={event} ctx={ctx} onContinue={advance} />
+            <OpenView
+              key={event.id}
+              event={event}
+              ctx={ctx}
+              onContinue={advance}
+              continueLabel={singleEvent ? "返回小屋" : "继续"}
+            />
           )}
 
           {stage === "settled" && settled && (
@@ -449,6 +478,7 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
               targetNpcId={settled.targetNpcId}
               text={settled.text ?? "（空气中有什么发生了变化。）"}
               onContinue={advance}
+              continueLabel={singleEvent ? "返回小屋" : "继续"}
             />
           )}
 
@@ -461,7 +491,7 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
                 onClick={advance}
                 className="mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
               >
-                继续
+                {singleEvent ? "返回小屋" : "继续"}
               </button>
             </div>
           )}
@@ -633,12 +663,14 @@ function DecisionOutcomeView({
   targetNpcId,
   text,
   onContinue,
+  continueLabel,
 }: {
   contextLines: string[];
   selected: RenderedOption;
   targetNpcId: string | null;
   text: string;
   onContinue: () => void;
+  continueLabel: string;
 }) {
   return (
     <div className="mt-2 animate-fade-in">
@@ -668,7 +700,7 @@ function DecisionOutcomeView({
           onClick={onContinue}
           className="mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
         >
-          继续
+          {continueLabel}
         </button>
       </div>
     </div>
@@ -710,10 +742,12 @@ function OpenView({
   event,
   ctx,
   onContinue,
+  continueLabel,
 }: {
   event: OpenEventSpec;
   ctx: EngineContext;
   onContinue: () => void;
+  continueLabel: string;
 }) {
   const lines = useMemo(() => openLines(event, ctx), [event, ctx]);
   const [shown, setShown] = useState(1);
@@ -728,7 +762,7 @@ function OpenView({
           onClick={onContinue}
           className="mb-8 mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
         >
-          继续
+          {continueLabel}
         </button>
       </div>
     );
@@ -777,7 +811,7 @@ function OpenView({
             onClick={onContinue}
             className="w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
           >
-            继续
+            {continueLabel}
           </button>
         )}
       </div>

@@ -62,6 +62,8 @@ export function HouseApp() {
   const [dayEndSeen, setDayEndSeen] = useState(false);
   /** 当天 3 事件已播完（EventFlow onDayFinished 已触发，等待进入房间/次日） */
   const [eventDayDone, setEventDayDone] = useState(false);
+  /** 从小屋事件卡片进入时，仅查看这一件；结束或返回后回到小屋。 */
+  const [singleEventIndex, setSingleEventIndex] = useState<number | null>(null);
   /** 结局档案是否展示（phase==="finale" 时自动打开） */
   const [finaleOpen, setFinaleOpen] = useState(false);
 
@@ -174,7 +176,7 @@ export function HouseApp() {
     tab === "house" &&
     island.phase === "day_loop" &&
     !inRoom &&
-    !eventDayDone &&
+    (singleEventIndex !== null || !eventDayDone) &&
     (hasIslandData || !progress.done);
   const pageKey = [
     tab,
@@ -218,6 +220,7 @@ export function HouseApp() {
 
   // 重看今天的三件事：回到当天第一个事件
   const handleReplayDay = () => {
+    setSingleEventIndex(null);
     useIslandStore.setState({ eventIndex: 0 });
     setEventDayDone(false);
     setDayEndSeen(false);
@@ -225,9 +228,15 @@ export function HouseApp() {
 
   // 从小屋卡片重看当天指定事件；结算层按事件 id 幂等处理，不会重复累加数值。
   const handleReplayEvent = (index: number) => {
-    useIslandStore.setState({ eventIndex: Math.max(0, Math.min(2, index)) });
-    setEventDayDone(false);
+    const nextIndex = Math.max(0, Math.min(2, index));
+    useIslandStore.setState({ eventIndex: nextIndex });
+    setSingleEventIndex(nextIndex);
     setDayEndSeen(false);
+  };
+
+  const handleSingleEventExit = () => {
+    setSingleEventIndex(null);
+    setEventDayDone(true);
   };
 
   return (
@@ -236,7 +245,11 @@ export function HouseApp() {
         {tab === "house" &&
           (inStory ? (
             hasIslandData ? (
-              <EventFlow onDayFinished={handleDayFinished} />
+              <EventFlow
+                onDayFinished={handleDayFinished}
+                singleEvent={singleEventIndex !== null}
+                onSingleEventExit={handleSingleEventExit}
+              />
             ) : (
               // 回退：island 未初始化时走旧 StoryFlow 主线
               <StoryFlow
