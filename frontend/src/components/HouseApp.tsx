@@ -24,6 +24,7 @@ import { RoomNight } from "@/components/RoomNight";
 import { FinaleReport } from "@/components/FinaleReport";
 import { EventFlow } from "@/components/EventFlow";
 import { getDay } from "@/data/events";
+import { getDaySceneImage } from "@/data/daySceneImages";
 import { useIslandStore } from "@/stores/useIslandStore";
 import { getHeartSignal, type HeartSignal } from "@/core/heartSignal";
 import { getNpcById } from "@/onboarding/npcLibrary";
@@ -533,10 +534,8 @@ function HouseContent({
 
 const ROOMS = ["客厅", "厨房", "阳台"] as const;
 
-function eventImageFor(location: string) {
-  if (/阳台|海边|庭院|户外|篝火/.test(location)) return scenes[2]!.image;
-  if (/厨房|料理|餐厅/.test(location)) return scenes[0]!.image;
-  return scenes[1]!.image;
+function eventImageFor(day: number) {
+  return getDaySceneImage(day);
 }
 
 function compactChatText(text: string, maxLength = 44) {
@@ -694,7 +693,7 @@ function HomeView({
                 className="flex w-full items-center gap-3 rounded-2xl glass-card p-3 text-left transition-colors hover:bg-secondary/60"
               >
                 <img
-                  src={eventImageFor(event.location)}
+                  src={eventImageFor(day)}
                   alt={event.title}
                   loading="lazy"
                   width={1024}
