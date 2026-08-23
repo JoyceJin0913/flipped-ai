@@ -574,7 +574,10 @@ function HomeView({
       {/* 成员名单：按房间分组，图外展示 */}
       <section className="mt-4 px-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">此刻他们在哪</h2>
+          <div>
+            <h2 className="text-sm font-medium">此刻他们在哪</h2>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">每天可以和三个人发起私聊</p>
+          </div>
           <span className="text-[11px] text-muted-foreground">5 男 · 5 女</span>
         </div>
         <div className="mt-3 space-y-2.5">
@@ -838,36 +841,39 @@ function ChatSheet({
   const [msgs, setMsgs] = useState<ChatMsg[]>([
     { from: "ta", text: `（${member.where}）嗯？你怎么过来了。` },
   ]);
-  const [used, setUsed] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [rounds, setRounds] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
+  const maxRounds = 20;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
-  const send = async (t: (typeof chatTopics)[number]) => {
-    if (sending) return;
-    setUsed((u) => [...u, t.key]);
-    setMsgs((m) => [...m, { from: "me", text: t.say }]);
+  const send = async (text: string, label: string, fallbackReply: string) => {
+    const message = text.trim();
+    if (sending || rounds >= maxRounds || !message) return;
+
+    setMsgs((m) => [...m, { from: "me", text: message }]);
+    setDraft("");
     setSending(true);
-    let reply = replyOf(t, member.name);
+    let reply = fallbackReply;
     try {
       const result = await postChat({
         member: { name: member.name, where: member.where, gender: member.gender },
         history: msgs,
-        userMessage: t.say,
+        userMessage: message,
       });
       reply = result.reply;
     } catch (error) {
       console.warn("[chat] 豆包不可用，使用固定回复", error);
     }
     setMsgs((m) => [...m, { from: "ta", text: reply }]);
-    onLog({ name: member.name, label: t.label, say: t.say, reply });
+    onLog({ name: member.name, label, say: message, reply });
+    setRounds((value) => value + 1);
     setSending(false);
   };
-
-  const left = chatTopics.filter((t) => !used.includes(t.key));
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-background/70 backdrop-blur-sm">
@@ -889,7 +895,9 @@ function ChatSheet({
           )}
           <div className="min-w-0 flex-1">
             <p className={`text-sm font-semibold ${tone}`}>{member.name}</p>
-            <p className="text-[11px] text-muted-foreground">{member.where} · 正在对话</p>
+            <p className="text-[11px] text-muted-foreground">
+              {member.where} · 第 {rounds}/{maxRounds} 轮
+            </p>
           </div>
           <button onClick={onClose} className="text-xs text-muted-foreground">
             结束
@@ -914,24 +922,49 @@ function ChatSheet({
         </div>
 
         <div className="space-y-2 border-t border-border/60 px-5 pb-8 pt-3">
-          {sending ? (
+          {rounds >= maxRounds ? (
+            <p className="py-3 text-center text-[11px] text-muted-foreground">
+              今天和 {member.name} 已经聊了很多，明天再继续吧。
+            </p>
+          ) : sending ? (
             <p className="py-2 text-center text-[11px] text-muted-foreground">
               {member.name} 正在输入……
             </p>
-          ) : left.length ? (
-            left.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => send(t)}
-                className="w-full rounded-full border border-border px-4 py-2.5 text-left text-xs transition-colors hover:bg-secondary/60"
-              >
-                {t.label} · 「{t.say}」
-              </button>
-            ))
           ) : (
-            <p className="py-2 text-center text-[11px] text-muted-foreground">
-              今天能聊的都聊完了，明天再来找 TA。
-            </p>
+            <>
+              {chatTopics.map((topic) => (
+                <button
+                  key={topic.key}
+                  onClick={() => send(topic.say, topic.label, replyOf(topic, member.name))}
+                  className="w-full rounded-full border border-border px-4 py-2.5 text-left text-xs transition-colors hover:bg-secondary/60"
+                >
+                  {topic.label} · 「{topic.say}」
+                </button>
+              ))}
+
+              <form
+                className="flex items-center gap-2 pt-1"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void send(draft, "自由输入", "我听见了。只是这句话，我想再想一会儿。");
+                }}
+              >
+                <input
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value.slice(0, 240))}
+                  placeholder="也可以自己说点什么……"
+                  maxLength={240}
+                  className="min-w-0 flex-1 rounded-full border border-border bg-background/60 px-4 py-2.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/60"
+                />
+                <button
+                  type="submit"
+                  disabled={!draft.trim()}
+                  className="shrink-0 rounded-full bg-primary px-4 py-2.5 text-xs font-medium text-primary-foreground disabled:opacity-40"
+                >
+                  发送
+                </button>
+              </form>
+            </>
           )}
         </div>
       </div>
