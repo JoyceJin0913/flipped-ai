@@ -516,6 +516,38 @@ function eventImageFor(location: string) {
   return scenes[1]!.image;
 }
 
+function compactChatText(text: string, maxLength = 44) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}…` : normalized;
+}
+
+function summarizeChatsByMember(chatLog: ChatLogEntry[]) {
+  const summaries = new Map<
+    string,
+    { name: string; labels: string[]; rounds: number; firstSay: string; lastReply: string }
+  >();
+
+  chatLog.forEach((entry) => {
+    const current = summaries.get(entry.name);
+    if (!current) {
+      summaries.set(entry.name, {
+        name: entry.name,
+        labels: [entry.label],
+        rounds: 1,
+        firstSay: entry.say,
+        lastReply: entry.reply,
+      });
+      return;
+    }
+
+    current.rounds += 1;
+    current.lastReply = entry.reply;
+    if (!current.labels.includes(entry.label)) current.labels.push(entry.label);
+  });
+
+  return Array.from(summaries.values());
+}
+
 function HomeView({
   chatLog,
   onLog,
@@ -538,6 +570,7 @@ function HomeView({
   const hero = scenes[1]!;
   const day = useIslandStore((s) => s.day);
   const todayEvents = getDay(day)?.events ?? [];
+  const chatSummaries = summarizeChatsByMember(chatLog);
   const [who, setWho] = useState<Member | null>(null);
   const [chatWith, setChatWith] = useState<Member | null>(null);
 
@@ -661,25 +694,29 @@ function HomeView({
         </ul>
 
         <h3 className="mt-6 text-sm font-medium text-accent">发生的私聊记录</h3>
-        {chatLog.length === 0 ? (
+        {chatSummaries.length === 0 ? (
           <p className="mt-2 rounded-2xl border border-dashed border-border/60 px-3 py-4 text-center text-xs text-muted-foreground">
             还没有私聊。点上面的名字，去和 TA 说句话。
           </p>
         ) : (
           <ul className="mt-2 space-y-2">
-            {chatLog.map((c, i) => (
-              <li key={i} className="rounded-2xl glass-card p-3">
+            {chatSummaries.map((summary) => (
+              <li key={summary.name} className="rounded-2xl glass-card p-3">
                 <div className="flex items-center gap-2">
                   <span
                     className={`text-xs font-medium ${
-                      genderOf(c.name) === "m" ? "text-male" : "text-female"
+                      genderOf(summary.name) === "m" ? "text-male" : "text-female"
                     }`}
                   >
-                    你 × {c.name}
+                    你 × {summary.name}
                   </span>
-                  <span className="text-[11px] text-muted-foreground">{c.label}</span>
+                  <span className="text-[11px] text-muted-foreground">{summary.rounds} 轮私聊</span>
                 </div>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">「{c.reply}」</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  你们聊到{summary.labels.join("、")}。你从「{compactChatText(summary.firstSay)}
+                  」说起，
+                  {summary.name}最后回应：「{compactChatText(summary.lastReply)}」
+                </p>
               </li>
             ))}
           </ul>
