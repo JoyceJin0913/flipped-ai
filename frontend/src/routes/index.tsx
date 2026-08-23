@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppRoot } from "@/components/AppRoot";
+import { PhoneFrame } from "@/components/PhoneFrame";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -18,5 +19,9 @@ export const Route = createFileRoute("/")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: AppRoot,
+  component: () => (
+    <PhoneFrame>
+      <AppRoot />
+    </PhoneFrame>
+  ),
 });
