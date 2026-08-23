@@ -458,7 +458,7 @@ export function MatchingSelection() {
               }`}
             >
               <div className="flex items-start gap-3">
-                <Avatar name={npc.name} gender={npc.gender} size="lg" ring={on} />
+                <Avatar name={npc.name} gender={npc.gender} src={npc.avatar} size="lg" ring={on} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-base font-semibold text-foreground">{npc.name}</span>
@@ -551,7 +551,7 @@ export function IntroScene() {
           <div className="space-y-3">
             {islandNpcs.map((npc) => (
               <div key={npc.id} className="flex items-center gap-3">
-                <Avatar name={npc.name} gender={npc.gender} size="sm" />
+                <Avatar name={npc.name} gender={npc.gender} src={npc.avatar} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-foreground">{npc.name}</p>
                   <p className="truncate text-[11px] text-muted-foreground">
@@ -572,7 +572,7 @@ export function IntroScene() {
                 key={npc.id}
                 className="flex items-center gap-2 rounded-full bg-secondary/50 py-1 pl-1 pr-3"
               >
-                <Avatar name={npc.name} gender={npc.gender} size="sm" />
+                <Avatar name={npc.name} gender={npc.gender} src={npc.avatar} size="sm" />
                 <span className="text-xs text-muted-foreground">{npc.name}</span>
               </div>
             ))}
