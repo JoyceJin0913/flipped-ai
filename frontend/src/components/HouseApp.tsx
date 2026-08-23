@@ -25,6 +25,7 @@ import { FinaleReport } from "@/components/FinaleReport";
 import { EventFlow } from "@/components/EventFlow";
 import { getDay } from "@/data/events";
 import { useIslandStore } from "@/stores/useIslandStore";
+import { useGameStore } from "@/stores/useOnboardingStore";
 import { getHeartSignal, type HeartSignal } from "@/core/heartSignal";
 import { getNpcById } from "@/onboarding/npcLibrary";
 import { useHouseState } from "@/hooks/useHouseState";
@@ -592,10 +593,42 @@ function HomeView({
 }) {
   const hero = scenes[1]!;
   const day = useIslandStore((s) => s.day);
+  const islandNpcs = useGameStore((s) => s.islandNpcs);
+  const competitors = useGameStore((s) => s.competitors);
+  const playerProfile = useGameStore((s) => s.playerProfile);
   const todayEvents = getDay(day)?.events ?? [];
   const chatSummaries = summarizeChatsByMember(chatLog);
   const [who, setWho] = useState<Member | null>(null);
   const [chatWith, setChatWith] = useState<Member | null>(null);
+  const onboardingRoster = [...islandNpcs, ...competitors];
+  const hasOnboardingRoster = onboardingRoster.length > 0;
+  const houseMembers: Member[] = hasOnboardingRoster
+    ? onboardingRoster.map((storedNpc, index) => {
+        const npc = getNpcById(storedNpc.id) ?? storedNpc;
+        return {
+          name: npc.name,
+          gender: npc.gender === "male" ? "m" : "f",
+          where: `在${ROOMS[index % ROOMS.length]}`,
+          top: "",
+          left: "",
+          ...(npc.avatar ? { avatar: npc.avatar } : {}),
+        };
+      })
+    : members;
+  const inferredPlayerGender =
+    playerProfile?.gender ??
+    competitors[0]?.gender ??
+    (islandNpcs[0] ? (islandNpcs[0].gender === "male" ? "female" : "male") : null);
+  const genderCounts = houseMembers.reduce(
+    (counts, member) => {
+      counts[member.gender] += 1;
+      return counts;
+    },
+    { m: 0, f: 0 },
+  );
+  if (hasOnboardingRoster && inferredPlayerGender) {
+    genderCounts[inferredPlayerGender === "male" ? "m" : "f"] += 1;
+  }
 
   return (
     <div>
@@ -650,11 +683,13 @@ function HomeView({
             <h2 className="text-sm font-medium">此刻他们在哪</h2>
             <p className="mt-0.5 text-[10px] text-muted-foreground">每天可以和三个人发起私聊</p>
           </div>
-          <span className="text-[11px] text-muted-foreground">5 男 · 5 女</span>
+          <span className="text-[11px] text-muted-foreground">
+            {genderCounts.m} 男 · {genderCounts.f} 女
+          </span>
         </div>
         <div className="mt-3 space-y-2.5">
           {ROOMS.map((room) => {
-            const list = members.filter((m) => m.where.slice(1) === room);
+            const list = houseMembers.filter((m) => m.where.slice(1) === room);
             return (
               <div key={room} className="flex items-center gap-3">
                 <span className="w-10 shrink-0 text-[11px] text-muted-foreground">{room}</span>
@@ -663,13 +698,27 @@ function HomeView({
                     <button
                       key={m.name}
                       onClick={() => setWho(m)}
-                      className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                      className={`inline-flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-[11px] transition-colors ${
                         m.gender === "m"
                           ? "border-male/40 text-male hover:bg-male/10"
                           : "border-female/40 text-female hover:bg-female/10"
                       }`}
                     >
-                      {m.name}
+                      {m.avatar ? (
+                        <img
+                          src={m.avatar}
+                          alt=""
+                          loading="lazy"
+                          width={24}
+                          height={24}
+                          className="size-6 rounded-full object-cover"
+                        />
+                      ) : (
+                        <span className="grid size-6 place-items-center rounded-full bg-secondary/80 text-[10px]">
+                          {m.name[0]}
+                        </span>
+                      )}
+                      <span>{m.name}</span>
                     </button>
                   ))}
                 </div>
@@ -723,25 +772,32 @@ function HomeView({
           </p>
         ) : (
           <ul className="mt-2 space-y-2">
-            {chatSummaries.map((summary) => (
-              <li key={summary.name} className="rounded-2xl glass-card p-3">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-xs font-medium ${
-                      genderOf(summary.name) === "m" ? "text-male" : "text-female"
-                    }`}
-                  >
-                    你 × {summary.name}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">{summary.rounds} 轮私聊</span>
-                </div>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  你们聊到{summary.labels.join("、")}。你从「{compactChatText(summary.firstSay)}
-                  」说起，
-                  {summary.name}最后回应：「{compactChatText(summary.lastReply)}」
-                </p>
-              </li>
-            ))}
+            {chatSummaries.map((summary) => {
+              const chatGender = houseMembers.find(
+                (member) => member.name === summary.name,
+              )?.gender;
+              const chatTone =
+                chatGender === "m"
+                  ? "text-male"
+                  : chatGender === "f"
+                    ? "text-female"
+                    : "text-muted-foreground";
+              return (
+                <li key={summary.name} className="rounded-2xl glass-card p-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-medium ${chatTone}`}>你 × {summary.name}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {summary.rounds} 轮私聊
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    你们聊到{summary.labels.join("、")}。你从「
+                    {compactChatText(summary.firstSay)}」说起，
+                    {summary.name}最后回应：「{compactChatText(summary.lastReply)}」
+                  </p>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -968,7 +1024,26 @@ function ChatSheet({
 
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
           {msgs.map((m, i) => (
-            <div key={i} className={`flex ${m.from === "me" ? "justify-end" : "justify-start"}`}>
+            <div
+              key={i}
+              className={`flex items-end gap-2 ${m.from === "me" ? "justify-end" : "justify-start"}`}
+            >
+              {m.from === "ta" &&
+                (member.avatar ? (
+                  <img
+                    src={member.avatar}
+                    alt=""
+                    width={28}
+                    height={28}
+                    className="size-7 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <span
+                    className={`grid size-7 shrink-0 place-items-center rounded-full bg-secondary text-[10px] ${tone}`}
+                  >
+                    {member.name[0]}
+                  </span>
+                ))}
               <p
                 className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
                   m.from === "me"
