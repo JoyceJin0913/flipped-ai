@@ -166,6 +166,7 @@ export function EventFlow({
     option: RenderedOption;
     targetNpcId: string | null;
   } | null>(null);
+  const [narrationLoading, setNarrationLoading] = useState(false);
   const [picker, setPicker] = useState<{
     option: EventOption;
     title: string;
@@ -241,6 +242,7 @@ export function EventFlow({
     }
 
     setParaIndex(0);
+    setNarrationLoading(false);
     // 决策事件延续旧版 SceneView 的阅读节奏：事件引导和选项
     // 进入时就同屏呈现，不再先经过一个只有旁白的中间页。
     setStage(event.kind === "decision" ? "decision" : "narration");
@@ -310,6 +312,7 @@ export function EventFlow({
     }
     const fallback = resolved.reply ?? "（空气中有什么发生了变化。）";
     setSettled({ text: fallback, option: ro, targetNpcId: resolved.mainTargetId });
+    setNarrationLoading(true);
     setStage("settled");
 
     void postNarration({
@@ -324,10 +327,12 @@ export function EventFlow({
         const latest = useIslandStore.getState();
         if (latest.day === st.day && latest.eventIndex === st.eventIndex) {
           setSettled((current) => (current ? { ...current, text: resultText } : current));
+          setNarrationLoading(false);
         }
       })
       .catch((error) => {
         console.warn("[event] 豆包不可用，使用规则引擎文案", error);
+        setNarrationLoading(false);
       });
   };
 
@@ -468,6 +473,7 @@ export function EventFlow({
               ctx={ctx}
               onContinue={advance}
               continueLabel={singleEvent ? "返回小屋" : "继续"}
+              loading={narrationLoading}
             />
           )}
 
@@ -664,6 +670,7 @@ function DecisionOutcomeView({
   text,
   onContinue,
   continueLabel,
+  loading,
 }: {
   contextLines: string[];
   selected: RenderedOption;
@@ -671,6 +678,7 @@ function DecisionOutcomeView({
   text: string;
   onContinue: () => void;
   continueLabel: string;
+  loading: boolean;
 }) {
   return (
     <div className="mt-2 animate-fade-in">
@@ -696,12 +704,22 @@ function DecisionOutcomeView({
       <div className="mt-4 rounded-3xl glass-card p-5">
         <p className="text-xs tracking-[0.24em] text-accent">剧情走向</p>
         <p className="mt-3 text-[15px] leading-7 text-foreground/90">{text}</p>
-        <button
-          onClick={onContinue}
-          className="mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
-        >
-          {continueLabel}
-        </button>
+        {loading ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-6 w-full rounded-full bg-secondary py-3.5 text-center text-sm font-medium text-muted-foreground"
+          >
+            <span className="animate-pulse">等待场景改变</span>
+          </div>
+        ) : (
+          <button
+            onClick={onContinue}
+            className="mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
+          >
+            {continueLabel}
+          </button>
+        )}
       </div>
     </div>
   );
