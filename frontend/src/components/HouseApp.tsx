@@ -28,6 +28,7 @@ import { useIslandStore } from "@/stores/useIslandStore";
 import { getHeartSignal, type HeartSignal } from "@/core/heartSignal";
 import { getNpcById } from "@/onboarding/npcLibrary";
 import { useHouseState } from "@/hooks/useHouseState";
+import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { postChat, postChoice } from "@/lib/api";
 
 type TabKey = "house" | "relationships" | "me";
@@ -175,6 +176,15 @@ export function HouseApp() {
     !inRoom &&
     !eventDayDone &&
     (hasIslandData || !progress.done);
+  const pageKey = [
+    tab,
+    openScene?.id ?? "home",
+    inStory ? "event" : inRoom ? "room" : "house",
+    island.day,
+    island.eventIndex,
+    progress.index,
+  ].join(":");
+  useScrollToTop(pageKey);
   // 公共事件结束后会先回到自由小屋。只有当天与 3 位不同嘉宾
   // 完成私聊后，才进入回房复盘阶段；重复聊同一人不重复计数。
   const talkedCount = new Set(chatLog.map((entry) => entry.name)).size;

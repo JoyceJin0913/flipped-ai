@@ -12,9 +12,11 @@ import { useGameStore } from "@/stores/useOnboardingStore";
 import { useIslandStore } from "@/stores/useIslandStore";
 import { HouseApp } from "@/components/HouseApp";
 import { OnboardingApp } from "@/onboarding/OnboardingApp";
+import { useScrollToTop } from "@/hooks/useScrollToTop";
 
 export function AppRoot() {
   const phase = useGameStore((s) => s.phase);
+  useScrollToTop(phase);
 
   useEffect(() => {
     const url = new URL(window.location.href);

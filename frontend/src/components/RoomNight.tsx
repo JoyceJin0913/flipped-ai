@@ -13,6 +13,7 @@ import {
 import { useIslandStore } from "@/stores/useIslandStore";
 import { getNpcById } from "@/onboarding/npcLibrary";
 import roomNightImg from "@/assets/room-night.jpg";
+import { useScrollToTop } from "@/hooks/useScrollToTop";
 
 type Mode = "menu" | "choice" | "game";
 
@@ -53,6 +54,7 @@ type Mark = "heart" | "watch" | null;
 export function RoomNight({ onLeave }: { onLeave: () => void }) {
   const [mode, setMode] = useState<Mode>("menu");
   const [heart, setHeart] = useState(0);
+  useScrollToTop(mode);
 
   const island = useIslandStore();
   const { npcIds, eventLog, day } = island;
@@ -207,6 +209,7 @@ function ChoicePanel({ npcIds, onGain }: { npcIds: string[]; onGain: (g: number)
   const [to, setTo] = useState<string | null>(null);
   const [sent, setSent] = useState<{ text: string; reply: string } | null>(null);
   const [marks, setMarks] = useState<Record<string, Mark>>({});
+  useScrollToTop(step);
 
   const others = npcIds.filter((n) => n !== to);
 
@@ -415,6 +418,7 @@ function GamePanel({ onGain }: { onGain: (g: number) => void }) {
   const [step, setStep] = useState(0);
   const [chosen, setChosen] = useState<number | null>(null);
   const [correct, setCorrect] = useState(0);
+  useScrollToTop(step);
 
   const q = QUIZ[step];
 
