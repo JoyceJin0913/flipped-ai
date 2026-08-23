@@ -10,33 +10,80 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiChatRouteImport } from './routes/api.chat'
+import { Route as ApiChoiceRouteImport } from './routes/api.choice'
+import { Route as ApiNarrateRouteImport } from './routes/api.narrate'
+import { Route as ApiScenesIdRouteImport } from './routes/api.scenes.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiChatRoute = ApiChatRouteImport.update({
+  id: '/api/chat',
+  path: '/api/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiChoiceRoute = ApiChoiceRouteImport.update({
+  id: '/api/choice',
+  path: '/api/choice',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiNarrateRoute = ApiNarrateRouteImport.update({
+  id: '/api/narrate',
+  path: '/api/narrate',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiScenesIdRoute = ApiScenesIdRouteImport.update({
+  id: '/api/scenes/$id',
+  path: '/api/scenes/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/chat': typeof ApiChatRoute
+  '/api/choice': typeof ApiChoiceRoute
+  '/api/narrate': typeof ApiNarrateRoute
+  '/api/scenes/$id': typeof ApiScenesIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/chat': typeof ApiChatRoute
+  '/api/choice': typeof ApiChoiceRoute
+  '/api/narrate': typeof ApiNarrateRoute
+  '/api/scenes/$id': typeof ApiScenesIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/chat': typeof ApiChatRoute
+  '/api/choice': typeof ApiChoiceRoute
+  '/api/narrate': typeof ApiNarrateRoute
+  '/api/scenes/$id': typeof ApiScenesIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    '/' | '/api/chat' | '/api/choice' | '/api/narrate' | '/api/scenes/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/chat' | '/api/choice' | '/api/narrate' | '/api/scenes/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/chat'
+    | '/api/choice'
+    | '/api/narrate'
+    | '/api/scenes/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiChatRoute: typeof ApiChatRoute
+  ApiChoiceRoute: typeof ApiChoiceRoute
+  ApiNarrateRoute: typeof ApiNarrateRoute
+  ApiScenesIdRoute: typeof ApiScenesIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +95,43 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/chat': {
+      id: '/api/chat'
+      path: '/api/chat'
+      fullPath: '/api/chat'
+      preLoaderRoute: typeof ApiChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/choice': {
+      id: '/api/choice'
+      path: '/api/choice'
+      fullPath: '/api/choice'
+      preLoaderRoute: typeof ApiChoiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/narrate': {
+      id: '/api/narrate'
+      path: '/api/narrate'
+      fullPath: '/api/narrate'
+      preLoaderRoute: typeof ApiNarrateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scenes/$id': {
+      id: '/api/scenes/$id'
+      path: '/api/scenes/$id'
+      fullPath: '/api/scenes/$id'
+      preLoaderRoute: typeof ApiScenesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiChatRoute: ApiChatRoute,
+  ApiChoiceRoute: ApiChoiceRoute,
+  ApiNarrateRoute: ApiNarrateRoute,
+  ApiScenesIdRoute: ApiScenesIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

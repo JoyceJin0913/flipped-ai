@@ -28,7 +28,7 @@ import { useIslandStore } from "@/stores/useIslandStore";
 import { getHeartSignal, type HeartSignal } from "@/core/heartSignal";
 import { getNpcById } from "@/onboarding/npcLibrary";
 import { useHouseState } from "@/hooks/useHouseState";
-import { postChoice } from "@/lib/api";
+import { postChat, postChoice } from "@/lib/api";
 
 type TabKey = "house" | "relationships" | "me";
 type Picked = Record<string, Choice["key"]>;
@@ -93,7 +93,7 @@ export function HouseApp() {
       > = {};
       for (const id of ids) {
         try {
-          const res = await fetch(`http://localhost:3001/api/scenes/${id}`);
+          const res = await fetch(`/api/scenes/${id}`);
           if (res.ok) {
             const s = await res.json();
             next[id] = { dialogue: s.dialogue, question: s.question, choices: s.choices };
@@ -839,20 +839,32 @@ function ChatSheet({
     { from: "ta", text: `（${member.where}）嗯？你怎么过来了。` },
   ]);
   const [used, setUsed] = useState<string[]>([]);
+  const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
-  const send = (t: (typeof chatTopics)[number]) => {
+  const send = async (t: (typeof chatTopics)[number]) => {
+    if (sending) return;
     setUsed((u) => [...u, t.key]);
     setMsgs((m) => [...m, { from: "me", text: t.say }]);
-    const reply = replyOf(t, member.name);
-    window.setTimeout(() => {
-      setMsgs((m) => [...m, { from: "ta", text: reply }]);
-    }, 550);
+    setSending(true);
+    let reply = replyOf(t, member.name);
+    try {
+      const result = await postChat({
+        member: { name: member.name, where: member.where, gender: member.gender },
+        history: msgs,
+        userMessage: t.say,
+      });
+      reply = result.reply;
+    } catch (error) {
+      console.warn("[chat] 豆包不可用，使用固定回复", error);
+    }
+    setMsgs((m) => [...m, { from: "ta", text: reply }]);
     onLog({ name: member.name, label: t.label, say: t.say, reply });
+    setSending(false);
   };
 
   const left = chatTopics.filter((t) => !used.includes(t.key));
@@ -902,7 +914,11 @@ function ChatSheet({
         </div>
 
         <div className="space-y-2 border-t border-border/60 px-5 pb-8 pt-3">
-          {left.length ? (
+          {sending ? (
+            <p className="py-2 text-center text-[11px] text-muted-foreground">
+              {member.name} 正在输入……
+            </p>
+          ) : left.length ? (
             left.map((t) => (
               <button
                 key={t.key}

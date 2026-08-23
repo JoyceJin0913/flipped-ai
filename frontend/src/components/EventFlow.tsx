@@ -34,6 +34,7 @@ import type {
   TensionLevel,
 } from "@/data/events/types";
 import { getNpcById } from "@/onboarding/npcLibrary";
+import { postNarration } from "@/lib/api";
 import {
   buildOptions,
   dynamicAffinityMin,
@@ -290,8 +291,27 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
         event.id,
       );
     }
-    setSettled({ text: resolved.reply });
+    const fallback = resolved.reply ?? "（空气中有什么发生了变化。）";
+    setSettled({ text: fallback });
     setStage("settled");
+
+    void postNarration({
+      day: st.day,
+      eventTitle: event.title,
+      location: event.location,
+      context: event.narration.map((line) => fillText(line, makeCtx(st))).join(" "),
+      choice: ro.text,
+      fallback,
+    })
+      .then(({ resultText }) => {
+        const latest = useIslandStore.getState();
+        if (latest.day === st.day && latest.eventIndex === st.eventIndex) {
+          setSettled({ text: resultText });
+        }
+      })
+      .catch((error) => {
+        console.warn("[event] 豆包不可用，使用规则引擎文案", error);
+      });
   };
 
   const onOptionClick = (ro: RenderedOption) => {
