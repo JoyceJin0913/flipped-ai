@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { useIslandStore } from "@/stores/useIslandStore";
 import { getDay } from "@/data/events";
+import { getDaySceneImage } from "@/data/daySceneImages";
 import type {
   DecisionEventSpec,
   EventOption,
@@ -251,6 +252,7 @@ export function EventFlow({
   if (phase !== "day_loop" || !daySpec || !event) return null;
 
   const tension = TENSION_META[event.tension];
+  const daySceneImage = getDaySceneImage(day);
   const decisionResult: BuildOptionsResult | null =
     event.kind === "decision" ? buildOptions(event, ctx) : null;
 
@@ -399,39 +401,53 @@ export function EventFlow({
       <div
         className={`pointer-events-none absolute inset-x-0 top-0 h-80 bg-gradient-to-b ${tension.bg} to-transparent`}
       />
-      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-xl flex-col px-5 pb-12 pt-14 animate-fade-in">
-        <div className="mb-6">
-          {singleEvent ? (
-            <button
-              type="button"
-              onClick={onSingleEventExit}
-              className="inline-flex items-center gap-1 rounded-full border border-border/70 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-            >
-              <ChevronLeft className="size-4" /> 返回
-            </button>
-          ) : (
-            <div className="flex items-center justify-center gap-1.5">
-              {daySpec.events.map((_, i) => (
-                <span
-                  key={i}
-                  className={`h-1 w-8 rounded-full transition-colors ${
-                    i <= eventIndex ? "bg-primary" : "bg-border"
-                  }`}
-                />
-              ))}
-            </div>
-          )}
-          <div className="mt-4 flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs tracking-[0.3em] text-muted-foreground">
+      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-xl flex-col px-5 pb-12 animate-fade-in">
+        <div className="relative -mx-5 mb-6 aspect-square overflow-hidden rounded-b-[2rem] border-b border-border/50">
+          <img
+            src={daySceneImage}
+            alt={`第 ${day} 天 · ${daySpec.theme}`}
+            width={1254}
+            height={1254}
+            className="absolute inset-0 size-full object-cover"
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/45 via-transparent to-black/75" />
+
+          <div className="absolute inset-x-0 top-0 px-5 pt-10">
+            {singleEvent ? (
+              <button
+                type="button"
+                onClick={onSingleEventExit}
+                className="inline-flex items-center gap-1 rounded-full border border-white/30 bg-black/30 px-3 py-1.5 text-xs text-white backdrop-blur-sm transition-colors hover:bg-black/50"
+              >
+                <ChevronLeft className="size-4" /> 返回
+              </button>
+            ) : (
+              <div className="flex items-center justify-center gap-1.5">
+                {daySpec.events.map((_, i) => (
+                  <span
+                    key={i}
+                    className={`h-1 w-8 rounded-full transition-colors ${
+                      i <= eventIndex ? "bg-primary" : "bg-white/35"
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5 text-white">
+            <div className="min-w-0 drop-shadow-md">
+              <p className="text-xs tracking-[0.28em] text-white/75">
                 第 {day} 天 · {daySpec.theme}
               </p>
-              <h2 className="mt-1 text-xl font-medium text-foreground">{event.title}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <h2 className="mt-1 text-2xl font-semibold">{event.title}</h2>
+              <p className="mt-1 text-sm text-white/80">
                 {event.location} · {event.timeLabel}
               </p>
             </div>
-            <span className={`shrink-0 rounded-full border px-3 py-1 text-xs ${tension.chip}`}>
+            <span
+              className={`shrink-0 rounded-full border bg-black/35 px-3 py-1 text-xs backdrop-blur-sm ${tension.chip}`}
+            >
               {tension.label}
             </span>
           </div>
