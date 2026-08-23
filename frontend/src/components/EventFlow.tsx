@@ -152,7 +152,11 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
 
   const [stage, setStage] = useState<FlowStage>("hooks");
   const [paraIndex, setParaIndex] = useState(0);
-  const [settled, setSettled] = useState<{ text: string | null } | null>(null);
+  const [settled, setSettled] = useState<{
+    text: string | null;
+    option: RenderedOption;
+    targetNpcId: string | null;
+  } | null>(null);
   const [picker, setPicker] = useState<{
     option: EventOption;
     title: string;
@@ -292,7 +296,7 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
       );
     }
     const fallback = resolved.reply ?? "（空气中有什么发生了变化。）";
-    setSettled({ text: fallback });
+    setSettled({ text: fallback, option: ro, targetNpcId: resolved.mainTargetId });
     setStage("settled");
 
     void postNarration({
@@ -306,7 +310,7 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
       .then(({ resultText }) => {
         const latest = useIslandStore.getState();
         if (latest.day === st.day && latest.eventIndex === st.eventIndex) {
-          setSettled({ text: resultText });
+          setSettled((current) => (current ? { ...current, text: resultText } : current));
         }
       })
       .catch((error) => {
@@ -438,18 +442,14 @@ export function EventFlow({ onDayFinished }: { onDayFinished?: () => void }) {
             <OpenView key={event.id} event={event} ctx={ctx} onContinue={advance} />
           )}
 
-          {stage === "settled" && (
-            <div className="rounded-3xl glass-card p-6 animate-fade-in">
-              <p className="text-[15px] leading-7 text-foreground/90">
-                {settled?.text ?? "（空气中有什么发生了变化。）"}
-              </p>
-              <button
-                onClick={advance}
-                className="mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
-              >
-                继续
-              </button>
-            </div>
+          {stage === "settled" && settled && (
+            <DecisionOutcomeView
+              contextLines={event.narration.map((line) => fillText(line, ctx))}
+              selected={settled.option}
+              targetNpcId={settled.targetNpcId}
+              text={settled.text ?? "（空气中有什么发生了变化。）"}
+              onContinue={advance}
+            />
           )}
 
           {stage === "skipped" && (
@@ -553,49 +553,124 @@ function DecisionView({
       </div>
 
       <div className="mt-4 space-y-3">
-      {result.options.map((ro) => {
-        const silent = ro.option.slot === "C";
-        return (
-          <button
-            key={ro.option.id}
-            onClick={() => onOption(ro)}
-            disabled={!ro.enabled}
-            className={`w-full rounded-2xl glass-card p-4 text-left transition ${
-              ro.enabled ? "hover:bg-foreground/5 active:scale-[0.99]" : "opacity-45"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <span
-                className={`rounded-md border px-2 py-0.5 text-[11px] ${SLOT_STYLE[ro.option.slot]}`}
-              >
-                {SLOT_LABELS[ro.option.slot]}
-              </span>
-              {!silent && ro.option.risk && (
-                <span className={`size-1.5 rounded-full ${RISK_DOT[ro.option.risk]}`} />
-              )}
-              {ro.option.selector && (
-                <span className="rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
-                  选择目标
-                </span>
-              )}
-            </div>
-            <p
-              className={`mt-3 text-[15px] leading-7 ${
-                silent ? "text-foreground/75" : "text-foreground"
-              }`}
-            >
-              {ro.text}
-            </p>
-            {!ro.enabled && ro.lockLabel && (
-              <p className="mt-2 text-xs text-muted-foreground">{ro.lockLabel}</p>
-            )}
-          </button>
-        );
-      })}
+        {result.options.map((ro) => (
+          <DecisionOptionCard key={ro.option.id} option={ro} onSelect={() => onOption(ro)} />
+        ))}
       </div>
       {result.warnings.length > 0 && (
         <p className="text-center text-xs text-amber-400/80">（{result.warnings.join("；")}）</p>
       )}
+    </div>
+  );
+}
+
+function DecisionOptionCard({
+  option: ro,
+  selected = false,
+  selectedTarget,
+  onSelect,
+}: {
+  option: RenderedOption;
+  selected?: boolean;
+  selectedTarget?: string | null;
+  onSelect?: () => void;
+}) {
+  const silent = ro.option.slot === "C";
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={selected || !ro.enabled}
+      className={`w-full rounded-2xl border p-4 text-left transition ${
+        selected
+          ? "border-primary/70 bg-primary/10"
+          : `glass-card border-transparent ${
+              ro.enabled ? "hover:bg-foreground/5 active:scale-[0.99]" : "opacity-45"
+            }`
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span className={`rounded-md border px-2 py-0.5 text-[11px] ${SLOT_STYLE[ro.option.slot]}`}>
+          {SLOT_LABELS[ro.option.slot]}
+        </span>
+        {!silent && ro.option.risk && (
+          <span className={`size-1.5 rounded-full ${RISK_DOT[ro.option.risk]}`} />
+        )}
+        {selected && (
+          <span className="rounded-md bg-primary/15 px-2 py-0.5 text-[11px] text-primary">
+            已选择
+          </span>
+        )}
+        {selectedTarget ? (
+          <span className="rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+            {selectedTarget}
+          </span>
+        ) : (
+          ro.option.selector && (
+            <span className="rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+              选择目标
+            </span>
+          )
+        )}
+      </div>
+      <p
+        className={`mt-3 text-[15px] leading-7 ${
+          silent ? "text-foreground/75" : "text-foreground"
+        }`}
+      >
+        {ro.text}
+      </p>
+      {!ro.enabled && ro.lockLabel && (
+        <p className="mt-2 text-xs text-muted-foreground">{ro.lockLabel}</p>
+      )}
+    </button>
+  );
+}
+
+function DecisionOutcomeView({
+  contextLines,
+  selected,
+  targetNpcId,
+  text,
+  onContinue,
+}: {
+  contextLines: string[];
+  selected: RenderedOption;
+  targetNpcId: string | null;
+  text: string;
+  onContinue: () => void;
+}) {
+  return (
+    <div className="mt-2 animate-fade-in">
+      <div className="rounded-3xl glass-card p-5">
+        <p className="text-xs tracking-[0.24em] text-accent">此刻，你选择了</p>
+        <div className="mt-3 space-y-2">
+          {contextLines.map((line, index) => (
+            <p key={index} className="text-[15px] leading-7 text-foreground/90">
+              {line}
+            </p>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <DecisionOptionCard
+          option={selected}
+          selected
+          selectedTarget={targetNpcId ? npcName(targetNpcId) : null}
+        />
+      </div>
+
+      <div className="mt-4 rounded-3xl glass-card p-5">
+        <p className="text-xs tracking-[0.24em] text-accent">剧情走向</p>
+        <p className="mt-3 text-[15px] leading-7 text-foreground/90">{text}</p>
+        <button
+          onClick={onContinue}
+          className="mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
+        >
+          继续
+        </button>
+      </div>
     </div>
   );
 }
