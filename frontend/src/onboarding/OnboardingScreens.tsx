@@ -58,12 +58,14 @@ export function ProfileSetup() {
 
   const [name, setName] = useState("");
   const [gender, setGender] = useState<PlayerGender | null>(null);
-  const [age, setAge] = useState<number | null>(null);
+  const [ageDraft, setAgeDraft] = useState("");
   const [agePrivate, setAgePrivate] = useState(false);
   const [zodiac, setZodiac] = useState<Zodiac | null>(null);
 
+  const parsedAge = /^\d+$/.test(ageDraft) ? Number(ageDraft) : null;
+  const ageIsValid = parsedAge !== null && parsedAge >= 18 && parsedAge <= 99;
   const ready =
-    name.trim().length > 0 && gender !== null && (age !== null || agePrivate) && zodiac !== null;
+    name.trim().length > 0 && gender !== null && (ageIsValid || agePrivate) && zodiac !== null;
 
   const handleNext = () => {
     if (!ready) return;
@@ -74,7 +76,7 @@ export function ProfileSetup() {
       attachment: "secure" as const,
       weakAxes: [],
       zodiac: zodiac!,
-      ...(age !== null ? { age } : {}),
+      ...(ageIsValid ? { age: parsedAge } : {}),
     };
     setPlayerProfile(profile);
     setPhase("personality_test");
@@ -139,12 +141,13 @@ export function ProfileSetup() {
                 inputMode="numeric"
                 min={18}
                 max={99}
-                value={age ?? ""}
-                placeholder="填入数字（选填）"
+                step={1}
+                value={ageDraft}
+                placeholder="18–99 岁"
+                aria-invalid={ageDraft !== "" && !ageIsValid}
                 onChange={(e) => {
-                  const v = e.target.value;
                   setAgePrivate(false);
-                  setAge(v === "" ? null : Math.max(18, Math.min(99, Number(v) || 0)));
+                  setAgeDraft(e.target.value);
                 }}
                 className="flex-1 rounded-2xl glass-card px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
               />
@@ -152,7 +155,7 @@ export function ProfileSetup() {
                 type="button"
                 onClick={() => {
                   setAgePrivate(true);
-                  setAge(null);
+                  setAgeDraft("");
                 }}
                 className={`shrink-0 rounded-2xl border px-4 py-3 text-sm font-medium transition-colors active:scale-[0.97] ${
                   agePrivate
@@ -163,6 +166,9 @@ export function ProfileSetup() {
                 保密
               </button>
             </div>
+            {ageDraft !== "" && !ageIsValid && (
+              <p className="mt-2 text-xs text-destructive">请输入 18–99 的整数</p>
+            )}
           </div>
 
           <div>
