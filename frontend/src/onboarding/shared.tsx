@@ -158,15 +158,17 @@ export function HeartBar({ value, showLabel = true }: { value: number; showLabel
   );
 }
 
-/** 头像圆片（首字 + 性别色） */
+/** 头像圆片（图片优先，缺失或加载失败时回退为首字 + 性别色） */
 export function Avatar({
   name,
   gender,
+  src,
   size = "md",
   ring,
 }: {
   name: string;
   gender: "male" | "female";
+  src?: string | undefined;
   size?: "sm" | "md" | "lg" | "xl";
   ring?: boolean;
 }) {
@@ -182,11 +184,22 @@ export function Avatar({
       : "border border-female/40 bg-female/10 text-female";
   return (
     <div
-      className={`${sizes[size]} ${tone} flex shrink-0 items-center justify-center rounded-full font-semibold ${
+      className={`${sizes[size]} ${tone} relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold ${
         ring ? "ring-2 ring-primary/60 ring-offset-2 ring-offset-background" : ""
       }`}
     >
       {name.slice(0, 1)}
+      {src && (
+        <img
+          src={src}
+          alt={`${name}头像`}
+          className="absolute inset-0 h-full w-full object-cover"
+          draggable={false}
+          onError={(event) => {
+            event.currentTarget.hidden = true;
+          }}
+        />
+      )}
     </div>
   );
 }

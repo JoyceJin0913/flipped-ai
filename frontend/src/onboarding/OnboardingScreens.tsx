@@ -58,22 +58,27 @@ export function ProfileSetup() {
 
   const [name, setName] = useState("");
   const [gender, setGender] = useState<PlayerGender | null>(null);
-  const [age, setAge] = useState<number | null>(null);
+  const [ageDraft, setAgeDraft] = useState("");
+  const [agePrivate, setAgePrivate] = useState(false);
   const [zodiac, setZodiac] = useState<Zodiac | null>(null);
 
-  const ready = name.trim().length > 0 && gender !== null && age !== null && zodiac !== null;
+  const parsedAge = /^\d+$/.test(ageDraft) ? Number(ageDraft) : null;
+  const ageIsValid = parsedAge !== null && parsedAge >= 18 && parsedAge <= 99;
+  const ready =
+    name.trim().length > 0 && gender !== null && (ageIsValid || agePrivate) && zodiac !== null;
 
   const handleNext = () => {
     if (!ready) return;
-    setPlayerProfile({
+    const profile = {
       name: name.trim(),
       gender: gender!,
-      age: age!,
-      zodiac: zodiac!,
       mbti: "INFP" as MBTI, // 测试后覆盖
-      attachment: "secure",
+      attachment: "secure" as const,
       weakAxes: [],
-    });
+      zodiac: zodiac!,
+      ...(ageIsValid ? { age: parsedAge } : {}),
+    };
+    setPlayerProfile(profile);
     setPhase("personality_test");
   };
 
@@ -130,21 +135,40 @@ export function ProfileSetup() {
 
           <div>
             <label className="mb-2 block text-xs font-medium text-muted-foreground">你的年龄</label>
-            <div className="grid grid-cols-5 gap-2">
-              {Array.from({ length: 15 }, (_, i) => i + 18).map((a) => (
-                <button
-                  key={a}
-                  onClick={() => setAge(a)}
-                  className={`rounded-xl border py-2.5 text-xs font-medium transition-colors active:scale-[0.96] ${
-                    age === a
-                      ? "border-primary bg-secondary text-primary shadow-glow"
-                      : "border-border bg-card/70 text-muted-foreground hover:bg-secondary/60"
-                  }`}
-                >
-                  {a}
-                </button>
-              ))}
+            <div className="flex gap-2">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={18}
+                max={99}
+                step={1}
+                value={ageDraft}
+                placeholder="18–99 岁"
+                aria-invalid={ageDraft !== "" && !ageIsValid}
+                onChange={(e) => {
+                  setAgePrivate(false);
+                  setAgeDraft(e.target.value);
+                }}
+                className="flex-1 rounded-2xl glass-card px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setAgePrivate(true);
+                  setAgeDraft("");
+                }}
+                className={`shrink-0 rounded-2xl border px-4 py-3 text-sm font-medium transition-colors active:scale-[0.97] ${
+                  agePrivate
+                    ? "border-primary bg-secondary text-primary shadow-glow"
+                    : "border-border bg-card/70 text-muted-foreground hover:bg-secondary/60"
+                }`}
+              >
+                保密
+              </button>
             </div>
+            {ageDraft !== "" && !ageIsValid && (
+              <p className="mt-2 text-xs text-destructive">请输入 18–99 的整数</p>
+            )}
           </div>
 
           <div>
@@ -458,7 +482,31 @@ export function MatchingSelection() {
               }`}
             >
               <div className="flex items-start gap-3">
-                <Avatar name={npc.name} gender={npc.gender} size="lg" ring={on} />
+                <div
+                  className={`relative size-24 shrink-0 overflow-hidden rounded-2xl border bg-male/10 ${
+                    npc.gender === "male" ? "border-male/40" : "border-female/40"
+                  } ${on ? "ring-2 ring-primary/60 ring-offset-2 ring-offset-background" : ""}`}
+                >
+                  <span
+                    className={`flex h-full w-full items-center justify-center text-2xl font-semibold ${
+                      npc.gender === "male" ? "text-male" : "text-female"
+                    }`}
+                  >
+                    {npc.name.slice(0, 1)}
+                  </span>
+                  {npc.avatar && (
+                    <img
+                      src={npc.avatar}
+                      alt={`${npc.name}头像`}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      style={{ objectPosition: "50% 30%" }}
+                      draggable={false}
+                      onError={(event) => {
+                        event.currentTarget.hidden = true;
+                      }}
+                    />
+                  )}
+                </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-base font-semibold text-foreground">{npc.name}</span>
@@ -551,7 +599,7 @@ export function IntroScene() {
           <div className="space-y-3">
             {islandNpcs.map((npc) => (
               <div key={npc.id} className="flex items-center gap-3">
-                <Avatar name={npc.name} gender={npc.gender} size="sm" />
+                <Avatar name={npc.name} gender={npc.gender} src={npc.avatar} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-foreground">{npc.name}</p>
                   <p className="truncate text-[11px] text-muted-foreground">
@@ -565,14 +613,35 @@ export function IntroScene() {
         </div>
 
         <div className="glass-card rounded-3xl p-5">
-          <SectionTitle hint={`${competitors.length} 位`}>同性竞争者</SectionTitle>
-          <div className="flex flex-wrap gap-2">
+          <SectionTitle hint={`${competitors.length} 位`}>同性参与者</SectionTitle>
+          <div className="flex flex-wrap gap-3">
             {competitors.map((npc) => (
-              <div
-                key={npc.id}
-                className="flex items-center gap-2 rounded-full bg-secondary/50 py-1 pl-1 pr-3"
-              >
-                <Avatar name={npc.name} gender={npc.gender} size="sm" />
+              <div key={npc.id} className="flex w-[72px] flex-col items-center gap-1.5">
+                <div
+                  className={`relative size-[72px] shrink-0 overflow-hidden rounded-2xl border bg-male/10 ${
+                    npc.gender === "male" ? "border-male/40" : "border-female/40"
+                  }`}
+                >
+                  <span
+                    className={`flex h-full w-full items-center justify-center text-xl font-semibold ${
+                      npc.gender === "male" ? "text-male" : "text-female"
+                    }`}
+                  >
+                    {npc.name.slice(0, 1)}
+                  </span>
+                  {npc.avatar && (
+                    <img
+                      src={npc.avatar}
+                      alt={`${npc.name}头像`}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      style={{ objectPosition: "50% 30%" }}
+                      draggable={false}
+                      onError={(event) => {
+                        event.currentTarget.hidden = true;
+                      }}
+                    />
+                  )}
+                </div>
                 <span className="text-xs text-muted-foreground">{npc.name}</span>
               </div>
             ))}

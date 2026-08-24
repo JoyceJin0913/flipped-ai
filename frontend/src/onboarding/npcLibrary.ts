@@ -24,6 +24,24 @@
  */
 
 import type { NPC, MBTI, AttachmentType, Zodiac, StyleContract, AttachmentRules } from "./types";
+import ajieAvatar from "@/assets/avatars/npcs/ajie.webp";
+import anranAvatar from "@/assets/avatars/npcs/anran.webp";
+import baizeAvatar from "@/assets/avatars/npcs/baize.webp";
+// 游戏内 id/name 为 chengyi/承熠，对应用户素材「程亦」
+import chengyiAvatar from "@/assets/avatars/npcs/chengyi.webp";
+import guyanAvatar from "@/assets/avatars/npcs/guyan.webp";
+import jiangyeAvatar from "@/assets/avatars/npcs/jiangye.webp";
+import linxiaAvatar from "@/assets/avatars/npcs/linxia.webp";
+import luzeAvatar from "@/assets/avatars/npcs/luze.webp";
+// 游戏内 id/name 为 ningwan/宁婉，对应用户素材「宁晚」
+import ningwanAvatar from "@/assets/avatars/npcs/ningwan.webp";
+import qiaoyiAvatar from "@/assets/avatars/npcs/qiaoyi.webp";
+import suqingAvatar from "@/assets/avatars/npcs/suqing.webp";
+import wenrouAvatar from "@/assets/avatars/npcs/wenrou.webp";
+import xiaohaiAvatar from "@/assets/avatars/npcs/xiaohai.webp";
+import xiaomanAvatar from "@/assets/avatars/npcs/xiaoman.webp";
+import xiazhiAvatar from "@/assets/avatars/npcs/xiazhi.webp";
+import zhoumuAvatar from "@/assets/avatars/npcs/zhoumu.webp";
 
 // ============================================================
 // 依恋硬规则工厂（按依恋类型生成统一骨架）
@@ -206,6 +224,7 @@ export const MALE_NPCS: NPC[] = [
       ["走起", "直接", "上", "干就完了"],
     ),
     secureRules(),
+    ajieAvatar,
   ),
 
   // ---- 2. 江野 · 机智辩论型，爱挑话题 -----------------------------------
@@ -230,6 +249,7 @@ export const MALE_NPCS: NPC[] = [
       { bannedPunctuation: ["~"] },
     ),
     secureRules(),
+    jiangyeAvatar,
   ),
 
   // ---- 3. 顾言 · 深沉洞察型，看穿人心 -----------------------------------
@@ -252,6 +272,7 @@ export const MALE_NPCS: NPC[] = [
       bannedPunctuation: ["!", "~"],
     }),
     secureRules(),
+    guyanAvatar,
   ),
 
   // ---- 4. 承熠 · 温暖社交型，天生领袖 -----------------------------------
@@ -272,6 +293,7 @@ export const MALE_NPCS: NPC[] = [
     ["被关爱", "可以示弱"],
     secureStyle(["关我屁事", "随便", "无所谓", "滚", "烦死了"], ["没事", "我在", "别担心", "嗯"]),
     secureRules(),
+    chengyiAvatar,
   ),
 
   // ---- 5. 陆则 · 外冷内热创作者，话少 -----------------------------------
@@ -292,6 +314,7 @@ export const MALE_NPCS: NPC[] = [
     ["被无条件接纳", "不用伪装坚强"],
     avoidantStyle(["哈哈", "呀", "啦", "宝贝", "亲爱的"], ["……", "嗯", "随便", "不必"]),
     avoidantRules(),
+    luzeAvatar,
   ),
 
   // ---- 6. 周牧 · 冷静技术派，理性疏离 -----------------------------------
@@ -312,6 +335,7 @@ export const MALE_NPCS: NPC[] = [
     ["被耐心接近", "混乱中被接纳"],
     avoidantStyle(["哈哈", "宝贝", "亲爱的", "哎呀", "嘛"], ["嗯", "不必", "随你", "无"]),
     avoidantRules(),
+    zhoumuAvatar,
   ),
 
   // ---- 7. 小海 · 阳光但怕被遗忘 -----------------------------------------
@@ -335,6 +359,7 @@ export const MALE_NPCS: NPC[] = [
       ["嘿", "就是", "那个", "诶"],
     ),
     anxiousRules(),
+    xiaohaiAvatar,
   ),
 
   // ---- 8. 白泽 · 艺术敏感，怕被否定 -------------------------------------
@@ -357,6 +382,7 @@ export const MALE_NPCS: NPC[] = [
       bannedPunctuation: ["!"],
     }),
     anxiousRules(),
+    baizeAvatar,
   ),
 ];
 
@@ -387,6 +413,7 @@ export const FEMALE_NPCS: NPC[] = [
       { bannedPunctuation: ["~"] },
     ),
     secureRules(),
+    ningwanAvatar,
   ),
 
   // ---- 10. 乔一 · 机智独立，爱辩论 --------------------------------------
@@ -411,6 +438,7 @@ export const FEMALE_NPCS: NPC[] = [
       { bannedPunctuation: ["~"] },
     ),
     secureRules(),
+    qiaoyiAvatar,
   ),
 
   // ---- 11. 温柔 · 温柔照顾，默默付出 ------------------------------------
@@ -433,6 +461,7 @@ export const FEMALE_NPCS: NPC[] = [
       bannedPunctuation: ["!"],
     }),
     secureRules(),
+    wenrouAvatar,
   ),
 
   // ---- 12. 安然 · 理性疏离，话少精准 ------------------------------------
@@ -453,6 +482,7 @@ export const FEMALE_NPCS: NPC[] = [
     ["被耐心打动", "逻辑被打破"],
     avoidantStyle(["哈哈", "宝贝", "亲爱的", "哎呀", "嘛"], ["嗯", "未必", "无", "不必"]),
     avoidantRules(),
+    anranAvatar,
   ),
 
   // ---- 13. 小满 · 深沉内敛，怕被看穿 ------------------------------------
@@ -473,6 +503,7 @@ export const FEMALE_NPCS: NPC[] = [
     ["被坚定选择", "不用猜来猜去"],
     avoidantStyle(["哈哈", "宝贝", "呀", "啦", "亲"], ["……", "或许", "嗯", "不一定"]),
     avoidantRules(),
+    xiaomanAvatar,
   ),
 
   // ---- 14. 林夏 · 敏感文艺，渴望被看见 ----------------------------------
@@ -495,6 +526,7 @@ export const FEMALE_NPCS: NPC[] = [
       bannedPunctuation: ["!"],
     }),
     anxiousRules(),
+    linxiaAvatar,
   ),
 
   // ---- 15. 苏晴 · 热心焦虑，怕被忽略 ------------------------------------
@@ -518,6 +550,7 @@ export const FEMALE_NPCS: NPC[] = [
       ["诶", "你说", "是不是", "对吧"],
     ),
     anxiousRules(),
+    suqingAvatar,
   ),
 
   // ---- 16. 夏栀 · 活泼但不安，怕无聊 ------------------------------------
@@ -538,6 +571,7 @@ export const FEMALE_NPCS: NPC[] = [
     ["被允许不一样", "有人等她长大"],
     anxiousStyle(["随便", "都行", "无聊", "就这样", "没意思"], ["诶", "你说", "不对不对", "等等"]),
     anxiousRules(),
+    xiazhiAvatar,
   ),
 ];
 
