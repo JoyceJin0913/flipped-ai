@@ -82,17 +82,13 @@ export function TopBar({
       {right && <div className="absolute right-4 top-8">{right}</div>}
       <h1
         className={`font-semibold text-primary ${
-          title.length > 4
-            ? "text-2xl tracking-[0.18em]"
-            : "text-3xl tracking-[0.3em]"
+          title.length > 4 ? "text-2xl tracking-[0.18em]" : "text-3xl tracking-[0.3em]"
         }`}
       >
         {title}
       </h1>
       {subtitle && <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p>}
-      {time && (
-        <p className="mt-1 text-[11px] tracking-[0.3em] text-muted-foreground">{time}</p>
-      )}
+      {time && <p className="mt-1 text-[11px] tracking-[0.3em] text-muted-foreground">{time}</p>}
     </header>
   );
 }
@@ -209,7 +205,7 @@ export function Chip({
     default: "bg-secondary/60 text-muted-foreground border-border",
     primary: "bg-primary/15 text-primary border-primary/30",
     danger: "bg-destructive/15 text-destructive border-destructive/30",
-        male: "border-male/40 bg-male/10 text-male",
+    male: "border-male/40 bg-male/10 text-male",
     female: "border-female/40 bg-female/10 text-female",
   };
   return (

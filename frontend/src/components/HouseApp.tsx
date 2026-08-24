@@ -1,45 +1,36 @@
 import { useEffect, useRef, useState } from "react";
 
-import {
-  Home,
-  Heart,
-  User,
-  ChevronLeft,
-  Check,
-  ChevronRight,
-  MessageCircle,
-} from "lucide-react";
+import { Home, Heart, User, ChevronLeft, Check, ChevronRight, MessageCircle } from "lucide-react";
 import {
   scenes,
   storySequence,
   storyTransitions,
   members,
   hotspots,
-  microEvents,
   dateCard,
   genderOf,
-  avatarOf,
   affinities,
-  heartTrend,
-  playerGender,
-  type Affinity,
-
   meAvatar,
   profile,
   storyTimeline,
   chatTopics,
   replyOf,
   journey,
-  currentDay,
   type Scene,
   type Choice,
   type Member,
 } from "@/data/house";
 import { RoomNight } from "@/components/RoomNight";
 import { FinaleReport } from "@/components/FinaleReport";
+import { EventFlow } from "@/components/EventFlow";
+import { getDay } from "@/data/events";
+import { getDaySceneImage } from "@/data/daySceneImages";
+import { useIslandStore } from "@/stores/useIslandStore";
+import { getHeartSignal, type HeartSignal } from "@/core/heartSignal";
+import { getNpcById } from "@/onboarding/npcLibrary";
 import { useHouseState } from "@/hooks/useHouseState";
-import { postChoice } from "@/lib/api";
-
+import { useScrollToTop } from "@/hooks/useScrollToTop";
+import { postChat, postChoice } from "@/lib/api";
 
 type TabKey = "house" | "relationships" | "me";
 type Picked = Record<string, Choice["key"]>;
@@ -70,25 +61,50 @@ export function HouseApp() {
   const [progress, setProgress] = useState<StoryProgress>({ index: 0, done: false });
   const [inRoom, setInRoom] = useState(false);
   const [dayEndSeen, setDayEndSeen] = useState(false);
+  /** 当天 3 事件已播完（EventFlow onDayFinished 已触发，等待进入房间/次日） */
+  const [eventDayDone, setEventDayDone] = useState(false);
+  /** 从小屋事件卡片进入时，仅查看这一件；结束或返回后回到小屋。 */
+  const [singleEventIndex, setSingleEventIndex] = useState<number | null>(null);
+  /** 结局档案是否展示（phase==="finale" 时自动打开） */
+  const [finaleOpen, setFinaleOpen] = useState(false);
 
   const houseState = useHouseState();
+  const island = useIslandStore();
   const [dynamicResults, setDynamicResults] = useState<Record<string, { resultText: string }>>({});
   const [loadingSceneId, setLoadingSceneId] = useState<string | null>(null);
   // 后端 scene 覆盖：拉 /api/scenes/:id 拿新 dialogue/choices，key = scene id
-  const [backendScenes, setBackendScenes] = useState<Record<string, { dialogue: {who:string;line:string}[]; question: string; choices: {key:"A"|"B"|"C"; label:string}[] }>>({});
+  const [backendScenes, setBackendScenes] = useState<
+    Record<
+      string,
+      {
+        dialogue: { who: string; line: string }[];
+        question: string;
+        choices: { key: "A" | "B" | "C"; label: string }[];
+      }
+    >
+  >({});
 
   useEffect(() => {
     (async () => {
       const ids = ["kitchen", "living", "balcony"];
-      const next: Record<string, { dialogue: {who:string;line:string}[]; question: string; choices: {key:"A"|"B"|"C"; label:string}[] }> = {};
+      const next: Record<
+        string,
+        {
+          dialogue: { who: string; line: string }[];
+          question: string;
+          choices: { key: "A" | "B" | "C"; label: string }[];
+        }
+      > = {};
       for (const id of ids) {
         try {
-          const res = await fetch(`http://localhost:3001/api/scenes/${id}`);
+          const res = await fetch(`/api/scenes/${id}`);
           if (res.ok) {
             const s = await res.json();
             next[id] = { dialogue: s.dialogue, question: s.question, choices: s.choices };
           }
-        } catch { /* backend 未启动就用 house.ts */ }
+        } catch {
+          /* backend 未启动就用 house.ts */
+        }
       }
       setBackendScenes(next);
     })();
@@ -98,6 +114,16 @@ export function HouseApp() {
     setProgress(loadProgress());
     setHydrated(true);
   }, []);
+
+  // 挂载时把 onboarding 名单接进 island store（幂等：名单一致时什么都不做）
+  useEffect(() => {
+    useIslandStore.getState().initFromOnboarding();
+  }, []);
+
+  // finale 时自动展示结局档案（覆盖：Day 7 事件播完 / 刷新后恢复 finale 状态）
+  useEffect(() => {
+    if (island.phase === "finale") setFinaleOpen(true);
+  }, [island.phase]);
 
   const saveProgress = (p: StoryProgress) => {
     setProgress(p);
@@ -143,27 +169,103 @@ export function HouseApp() {
     }
   };
 
-  const inStory = hydrated && tab === "house" && !progress.done;
-  const talkedCount = new Set(chatLog.map((c) => c.name)).size;
-  const showDayEnd = tab === "house" && !inStory && !inRoom && !dayEndSeen && talkedCount >= 3;
+  const hasIslandData = island.npcIds.length > 0;
+  // 事件流播放中：island 七日主线（phase day_loop + 当天 3 事件未播完）；
+  // 无 island 数据时回退旧 StoryFlow（progress.done 控制回退完成态）
+  const inStory =
+    hydrated &&
+    tab === "house" &&
+    island.phase === "day_loop" &&
+    !inRoom &&
+    (singleEventIndex !== null || !eventDayDone) &&
+    (hasIslandData || !progress.done);
+  const pageKey = [
+    tab,
+    openScene?.id ?? "home",
+    inStory ? "event" : inRoom ? "room" : "house",
+    island.day,
+    island.eventIndex,
+    progress.index,
+  ].join(":");
+  useScrollToTop(pageKey);
+  // 公共事件结束后会先回到自由小屋。只有当天与 3 位不同嘉宾
+  // 完成私聊后，才进入回房复盘阶段；重复聊同一人不重复计数。
+  const talkedCount = new Set(chatLog.map((entry) => entry.name)).size;
+  const showDayEnd =
+    tab === "house" &&
+    island.phase === "day_loop" &&
+    !inRoom &&
+    !dayEndSeen &&
+    eventDayDone &&
+    talkedCount >= 3;
+
+  // Day 7 三件事播完时 store.phase 已被 EventFlow 切为 "finale" → 直接进结局页；
+  // 1-6 天 → 先回自由小屋，完成 3 位不同嘉宾的私聊后再弹 DayEnd overlay。
+  const handleDayFinished = () => {
+    if (useIslandStore.getState().phase === "finale") {
+      setFinaleOpen(true);
+    } else {
+      setEventDayDone(true);
+      setDayEndSeen(false);
+    }
+  };
+
+  // 离开房间 → 进下一天：advanceDay 重置 eventIndex=0，自动进入次日事件流
+  const handleRoomLeave = () => {
+    useIslandStore.getState().advanceDay();
+    setChatLog([]);
+    setDayEndSeen(false);
+    setEventDayDone(false);
+    setInRoom(false);
+  };
+
+  // 重看今天的三件事：回到当天第一个事件
+  const handleReplayDay = () => {
+    setSingleEventIndex(null);
+    useIslandStore.setState({ eventIndex: 0 });
+    setEventDayDone(false);
+    setDayEndSeen(false);
+  };
+
+  // 从小屋卡片重看当天指定事件；结算层按事件 id 幂等处理，不会重复累加数值。
+  const handleReplayEvent = (index: number) => {
+    const nextIndex = Math.max(0, Math.min(2, index));
+    useIslandStore.setState({ eventIndex: nextIndex });
+    setSingleEventIndex(nextIndex);
+    setDayEndSeen(false);
+  };
+
+  const handleSingleEventExit = () => {
+    setSingleEventIndex(null);
+    setEventDayDone(true);
+  };
 
   return (
     <div className="relative mx-auto flex min-h-screen w-full max-w-md flex-col bg-background">
       <div className={inStory ? "flex-1" : "flex-1 pb-24"}>
         {tab === "house" &&
           (inStory ? (
-            <StoryFlow
-              startIndex={progress.index}
-              picked={picked}
-              onPick={handlePick}
-              onStep={(i) => saveProgress({ index: i, done: false })}
-              onFinish={() => saveProgress({ index: storySequence.length - 1, done: true })}
-              dynamicResults={dynamicResults}
-              loadingSceneId={loadingSceneId}
-              backendScenes={backendScenes}
-            />
+            hasIslandData ? (
+              <EventFlow
+                onDayFinished={handleDayFinished}
+                singleEvent={singleEventIndex !== null}
+                onSingleEventExit={handleSingleEventExit}
+              />
+            ) : (
+              // 回退：island 未初始化时走旧 StoryFlow 主线
+              <StoryFlow
+                startIndex={progress.index}
+                picked={picked}
+                onPick={handlePick}
+                onStep={(i) => saveProgress({ index: i, done: false })}
+                onFinish={() => saveProgress({ index: storySequence.length - 1, done: true })}
+                dynamicResults={dynamicResults}
+                loadingSceneId={loadingSceneId}
+                backendScenes={backendScenes}
+              />
+            )
           ) : inRoom ? (
-            <RoomNight chatLog={chatLog} onLeave={() => setInRoom(false)} />
+            <RoomNight onLeave={handleRoomLeave} />
           ) : (
             <HouseContent
               openScene={openScene}
@@ -173,12 +275,14 @@ export function HouseApp() {
               onOpen={(s) => setOpenScene(s)}
               onPick={handlePick}
               onBack={() => setOpenScene(null)}
-              onReplay={() => saveProgress({ index: 0, done: false })}
-              canEnterRoom={talkedCount >= 3}
+              onReplay={handleReplayDay}
+              onReplayEvent={handleReplayEvent}
+              canEnterRoom={island.phase === "day_loop" && eventDayDone && talkedCount >= 3}
               onEnterRoom={() => {
                 setOpenScene(null);
                 setInRoom(true);
               }}
+              onOpenFinale={() => setFinaleOpen(true)}
               dynamicResults={dynamicResults}
               loadingSceneId={loadingSceneId}
               backendScenes={backendScenes}
@@ -195,9 +299,9 @@ export function HouseApp() {
             <p className="text-[11px] tracking-[0.3em] text-muted-foreground">23:00</p>
             <h2 className="mt-3 text-lg font-medium">今天结束了</h2>
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              你已经和 3 个人聊过天。灯一盏盏灭掉，
+              今天的三件事已经发生完。
               <br />
-              回到自己的房间，把今天收个尾。
+              灯一盏盏灭掉，回到自己的房间，把今天收个尾。
             </p>
             <ul className="mt-4 space-y-1.5 text-left text-xs text-muted-foreground">
               <li>· 发送心动短信</li>
@@ -223,10 +327,11 @@ export function HouseApp() {
           </div>
         </div>
       )}
+
+      {finaleOpen && <FinaleReport onClose={() => setFinaleOpen(false)} />}
     </div>
   );
 }
-
 
 /** 主线：三件事依次播放，中间用文字淡入淡出过渡，播完自动进入自由小屋 */
 function StoryFlow({
@@ -246,16 +351,29 @@ function StoryFlow({
   onFinish: () => void;
   dynamicResults: Record<string, { resultText: string }>;
   loadingSceneId: string | null;
-  backendScenes: Record<string, { dialogue: {who:string;line:string}[]; question: string; choices: {key:"A"|"B"|"C"; label:string}[] }>;
+  backendScenes: Record<
+    string,
+    {
+      dialogue: { who: string; line: string }[];
+      question: string;
+      choices: { key: "A" | "B" | "C"; label: string }[];
+    }
+  >;
 }) {
   const [index, setIndex] = useState(startIndex);
   const [transition, setTransition] = useState<string | null>(null);
   const [ending, setEnding] = useState(false);
 
   const scene = scenes.find((s) => s.id === storySequence[index]);
-  const mergedScene: Scene | undefined = scene && backendScenes[scene.id]
-    ? { ...scene, dialogue: backendScenes[scene.id]!.dialogue, question: backendScenes[scene.id]!.question, choices: backendScenes[scene.id]!.choices.map(c => ({ ...c, result: "", effects: [] })) }
-    : scene;
+  const mergedScene: Scene | undefined =
+    scene && backendScenes[scene.id]
+      ? {
+          ...scene,
+          dialogue: backendScenes[scene.id]!.dialogue,
+          question: backendScenes[scene.id]!.question,
+          choices: backendScenes[scene.id]!.choices.map((c) => ({ ...c, result: "", effects: [] })),
+        }
+      : scene;
 
   const next = () => {
     const text = storyTransitions[index] ?? "……";
@@ -296,7 +414,6 @@ function StoryFlow({
       </div>
     );
   }
-
 
   if (!mergedScene) return null;
 
@@ -345,8 +462,10 @@ function HouseContent({
   onPick,
   onBack,
   onReplay,
+  onReplayEvent,
   canEnterRoom,
   onEnterRoom,
+  onOpenFinale,
   dynamicResults,
   loadingSceneId,
   backendScenes,
@@ -359,15 +478,33 @@ function HouseContent({
   onPick: (id: string, k: Choice["key"]) => void;
   onBack: () => void;
   onReplay: () => void;
+  onReplayEvent: (index: number) => void;
   canEnterRoom: boolean;
   onEnterRoom: () => void;
+  onOpenFinale: () => void;
   dynamicResults: Record<string, { resultText: string }>;
   loadingSceneId: string | null;
-  backendScenes: Record<string, { dialogue: {who:string;line:string}[]; question: string; choices: {key:"A"|"B"|"C"; label:string}[] }>;
+  backendScenes: Record<
+    string,
+    {
+      dialogue: { who: string; line: string }[];
+      question: string;
+      choices: { key: "A" | "B" | "C"; label: string }[];
+    }
+  >;
 }) {
   if (openScene) {
     const merged: Scene = backendScenes[openScene.id]
-      ? { ...openScene, dialogue: backendScenes[openScene.id]!.dialogue, question: backendScenes[openScene.id]!.question, choices: backendScenes[openScene.id]!.choices.map(c => ({ ...c, result: "", effects: [] })) }
+      ? {
+          ...openScene,
+          dialogue: backendScenes[openScene.id]!.dialogue,
+          question: backendScenes[openScene.id]!.question,
+          choices: backendScenes[openScene.id]!.choices.map((c) => ({
+            ...c,
+            result: "",
+            effects: [],
+          })),
+        }
       : openScene;
     return (
       <SceneView
@@ -383,45 +520,81 @@ function HouseContent({
 
   return (
     <HomeView
-      picked={picked}
       chatLog={chatLog}
       onLog={onLog}
       onOpen={onOpen}
       onReplay={onReplay}
+      onReplayEvent={onReplayEvent}
       canEnterRoom={canEnterRoom}
       onEnterRoom={onEnterRoom}
+      onOpenFinale={onOpenFinale}
     />
   );
 }
 
-
-
 const ROOMS = ["客厅", "厨房", "阳台"] as const;
 
+function eventImageFor(day: number) {
+  return getDaySceneImage(day);
+}
+
+function compactChatText(text: string, maxLength = 44) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}…` : normalized;
+}
+
+function summarizeChatsByMember(chatLog: ChatLogEntry[]) {
+  const summaries = new Map<
+    string,
+    { name: string; labels: string[]; rounds: number; firstSay: string; lastReply: string }
+  >();
+
+  chatLog.forEach((entry) => {
+    const current = summaries.get(entry.name);
+    if (!current) {
+      summaries.set(entry.name, {
+        name: entry.name,
+        labels: [entry.label],
+        rounds: 1,
+        firstSay: entry.say,
+        lastReply: entry.reply,
+      });
+      return;
+    }
+
+    current.rounds += 1;
+    current.lastReply = entry.reply;
+    if (!current.labels.includes(entry.label)) current.labels.push(entry.label);
+  });
+
+  return Array.from(summaries.values());
+}
+
 function HomeView({
-  picked,
   chatLog,
   onLog,
   onOpen,
   onReplay,
+  onReplayEvent,
   canEnterRoom,
   onEnterRoom,
+  onOpenFinale,
 }: {
-  picked: Picked;
   chatLog: ChatLogEntry[];
   onLog: (e: ChatLogEntry) => void;
   onOpen: (s: Scene) => void;
   onReplay: () => void;
+  onReplayEvent: (index: number) => void;
   canEnterRoom: boolean;
   onEnterRoom: () => void;
-
+  onOpenFinale: () => void;
 }) {
-  const allScenes = scenes;
   const hero = scenes[1]!;
+  const day = useIslandStore((s) => s.day);
+  const todayEvents = getDay(day)?.events ?? [];
+  const chatSummaries = summarizeChatsByMember(chatLog);
   const [who, setWho] = useState<Member | null>(null);
   const [chatWith, setChatWith] = useState<Member | null>(null);
-
-
 
   return (
     <div>
@@ -441,7 +614,9 @@ function HomeView({
         <div className="absolute inset-0 bg-night-fade" />
 
         <div className="absolute inset-x-0 top-5 text-center">
-          <p className="text-2xl font-semibold text-foreground drop-shadow">Day 04</p>
+          <p className="text-2xl font-semibold text-foreground drop-shadow">
+            Day {String(day).padStart(2, "0")}
+          </p>
           <p className="mt-1 text-sm text-foreground/80">20:37 🌙</p>
         </div>
 
@@ -465,12 +640,15 @@ function HomeView({
         })}
       </section>
 
-      <JourneyTimeline />
+      <JourneyTimeline onOpenFinale={onOpenFinale} />
 
       {/* 成员名单：按房间分组，图外展示 */}
       <section className="mt-4 px-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">此刻他们在哪</h2>
+          <div>
+            <h2 className="text-sm font-medium">此刻他们在哪</h2>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">每天可以和三个人发起私聊</p>
+          </div>
           <span className="text-[11px] text-muted-foreground">5 男 · 5 女</span>
         </div>
         <div className="mt-3 space-y-2.5">
@@ -508,75 +686,64 @@ function HomeView({
 
         <h3 className="mt-3 text-sm font-medium text-accent">三件事</h3>
         <ul className="mt-2 space-y-3">
-          {allScenes.map((s) => (
-            <li key={s.id}>
+          {todayEvents.map((event, index) => (
+            <li key={event.id}>
               <button
-                onClick={() => onOpen(s)}
+                onClick={() => onReplayEvent(index)}
                 className="flex w-full items-center gap-3 rounded-2xl glass-card p-3 text-left transition-colors hover:bg-secondary/60"
               >
                 <img
-                  src={s.image}
-                  alt={s.title}
+                  src={eventImageFor(day)}
+                  alt={event.title}
                   loading="lazy"
                   width={1024}
                   height={1280}
                   className="size-14 shrink-0 rounded-xl object-cover"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{s.title}</p>
+                  <p className="truncate text-sm font-medium">{event.title}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {s.place} · {s.time}
+                    {event.location} · {event.timeLabel}
                   </p>
                 </div>
-                {picked[s.id] ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-1 text-[11px] text-accent">
-                    <Check className="size-3" /> 已看
-                  </span>
-                ) : (
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                )}
+                <span className="shrink-0 rounded-full bg-secondary px-2 py-1 text-[10px] text-accent">
+                  {event.kind === "decision" ? "选择事件" : "剧情事件"}
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               </button>
-            </li>
-          ))}
-          {microEvents.map((e) => (
-            <li
-              key={e.time}
-              className="flex items-start gap-3 rounded-2xl border border-border/60 px-3 py-2.5"
-            >
-              <span className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">{e.time}</span>
-              <p className="text-xs leading-relaxed text-muted-foreground">{e.text}</p>
             </li>
           ))}
         </ul>
 
         <h3 className="mt-6 text-sm font-medium text-accent">发生的私聊记录</h3>
-        {chatLog.length === 0 ? (
+        {chatSummaries.length === 0 ? (
           <p className="mt-2 rounded-2xl border border-dashed border-border/60 px-3 py-4 text-center text-xs text-muted-foreground">
             还没有私聊。点上面的名字，去和 TA 说句话。
           </p>
         ) : (
           <ul className="mt-2 space-y-2">
-            {chatLog.map((c, i) => (
-              <li key={i} className="rounded-2xl glass-card p-3">
+            {chatSummaries.map((summary) => (
+              <li key={summary.name} className="rounded-2xl glass-card p-3">
                 <div className="flex items-center gap-2">
                   <span
                     className={`text-xs font-medium ${
-                      genderOf(c.name) === "m" ? "text-male" : "text-female"
+                      genderOf(summary.name) === "m" ? "text-male" : "text-female"
                     }`}
                   >
-                    你 × {c.name}
+                    你 × {summary.name}
                   </span>
-                  <span className="text-[11px] text-muted-foreground">{c.label}</span>
+                  <span className="text-[11px] text-muted-foreground">{summary.rounds} 轮私聊</span>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  「{c.reply}」
+                  你们聊到{summary.labels.join("、")}。你从「{compactChatText(summary.firstSay)}
+                  」说起，
+                  {summary.name}最后回应：「{compactChatText(summary.lastReply)}」
                 </p>
               </li>
             ))}
           </ul>
         )}
       </section>
-
 
       <section className="mt-6 px-5">
         <div className="rounded-2xl glass-card p-4">
@@ -604,11 +771,9 @@ function HomeView({
         </button>
       </div>
 
-
       <p className="px-5 py-6 text-center text-[11px] text-muted-foreground">
         自由活动中 · 可以私聊、逛小屋
       </p>
-
 
       {who && !chatWith && (
         <MemberSheet
@@ -627,7 +792,6 @@ function HomeView({
             setWho(null);
           }}
         />
-
       )}
     </div>
   );
@@ -738,25 +902,39 @@ function ChatSheet({
   const [msgs, setMsgs] = useState<ChatMsg[]>([
     { from: "ta", text: `（${member.where}）嗯？你怎么过来了。` },
   ]);
-  const [used, setUsed] = useState<string[]>([]);
+  const [sending, setSending] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [rounds, setRounds] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
+  const maxRounds = 20;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
-  const send = (t: (typeof chatTopics)[number]) => {
-    setUsed((u) => [...u, t.key]);
-    setMsgs((m) => [...m, { from: "me", text: t.say }]);
-    const reply = replyOf(t, member.name);
-    window.setTimeout(() => {
-      setMsgs((m) => [...m, { from: "ta", text: reply }]);
-    }, 550);
-    onLog({ name: member.name, label: t.label, say: t.say, reply });
+  const send = async (text: string, label: string, fallbackReply: string) => {
+    const message = text.trim();
+    if (sending || rounds >= maxRounds || !message) return;
+
+    setMsgs((m) => [...m, { from: "me", text: message }]);
+    setDraft("");
+    setSending(true);
+    let reply = fallbackReply;
+    try {
+      const result = await postChat({
+        member: { name: member.name, where: member.where, gender: member.gender },
+        history: msgs,
+        userMessage: message,
+      });
+      reply = result.reply;
+    } catch (error) {
+      console.warn("[chat] 豆包不可用，使用固定回复", error);
+    }
+    setMsgs((m) => [...m, { from: "ta", text: reply }]);
+    onLog({ name: member.name, label, say: message, reply });
+    setRounds((value) => value + 1);
+    setSending(false);
   };
-
-
-  const left = chatTopics.filter((t) => !used.includes(t.key));
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-background/70 backdrop-blur-sm">
@@ -764,15 +942,23 @@ function ChatSheet({
       <div className="relative mx-auto flex h-[80vh] w-full max-w-md flex-col rounded-t-3xl border-t border-border bg-card">
         <div className="flex items-center gap-3 border-b border-border/60 px-5 py-3">
           {member.avatar ? (
-            <img src={member.avatar} alt={member.name} className="size-9 rounded-full object-cover" />
+            <img
+              src={member.avatar}
+              alt={member.name}
+              className="size-9 rounded-full object-cover"
+            />
           ) : (
-            <span className={`grid size-9 place-items-center rounded-full bg-secondary text-sm ${tone}`}>
+            <span
+              className={`grid size-9 place-items-center rounded-full bg-secondary text-sm ${tone}`}
+            >
               {member.name[0]}
             </span>
           )}
           <div className="min-w-0 flex-1">
             <p className={`text-sm font-semibold ${tone}`}>{member.name}</p>
-            <p className="text-[11px] text-muted-foreground">{member.where} · 正在对话</p>
+            <p className="text-[11px] text-muted-foreground">
+              {member.where} · 第 {rounds}/{maxRounds} 轮
+            </p>
           </div>
           <button onClick={onClose} className="text-xs text-muted-foreground">
             结束
@@ -797,28 +983,55 @@ function ChatSheet({
         </div>
 
         <div className="space-y-2 border-t border-border/60 px-5 pb-8 pt-3">
-          {left.length ? (
-            left.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => send(t)}
-                className="w-full rounded-full border border-border px-4 py-2.5 text-left text-xs transition-colors hover:bg-secondary/60"
-              >
-                {t.label} · 「{t.say}」
-              </button>
-            ))
-          ) : (
-            <p className="py-2 text-center text-[11px] text-muted-foreground">
-              今天能聊的都聊完了，明天再来找 TA。
+          {rounds >= maxRounds ? (
+            <p className="py-3 text-center text-[11px] text-muted-foreground">
+              今天和 {member.name} 已经聊了很多，明天再继续吧。
             </p>
+          ) : sending ? (
+            <p className="py-2 text-center text-[11px] text-muted-foreground">
+              {member.name} 正在输入……
+            </p>
+          ) : (
+            <>
+              {chatTopics.map((topic) => (
+                <button
+                  key={topic.key}
+                  onClick={() => send(topic.say, topic.label, replyOf(topic, member.name))}
+                  className="w-full rounded-full border border-border px-4 py-2.5 text-left text-xs transition-colors hover:bg-secondary/60"
+                >
+                  {topic.label} · 「{topic.say}」
+                </button>
+              ))}
+
+              <form
+                className="flex items-center gap-2 pt-1"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void send(draft, "自由输入", "我听见了。只是这句话，我想再想一会儿。");
+                }}
+              >
+                <input
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value.slice(0, 240))}
+                  placeholder="也可以自己说点什么……"
+                  maxLength={240}
+                  className="min-w-0 flex-1 rounded-full border border-border bg-background/60 px-4 py-2.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/60"
+                />
+                <button
+                  type="submit"
+                  disabled={!draft.trim()}
+                  className="shrink-0 rounded-full bg-primary px-4 py-2.5 text-xs font-medium text-primary-foreground disabled:opacity-40"
+                >
+                  发送
+                </button>
+              </form>
+            </>
           )}
         </div>
       </div>
     </div>
   );
 }
-
-
 
 function SceneView({
   scene,
@@ -837,7 +1050,6 @@ function SceneView({
   dynamicResult?: { resultText: string } | undefined;
   loading?: boolean;
 }) {
-
   return (
     <div className="animate-fade-in">
       <div className="relative">
@@ -867,7 +1079,6 @@ function SceneView({
           <span className="size-9" />
         </div>
 
-
         <div className="absolute inset-x-4 bottom-4 rounded-2xl glass-card px-4 py-3">
           {scene.dialogue.map((d, i) => (
             <p key={i} className="py-0.5 text-sm text-foreground/90">
@@ -896,248 +1107,184 @@ function SceneView({
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
             {storyMode ? "时间还在往前走" : "这是观察事件，今天的选择留给核心时刻"}
           </p>
-
         </div>
       ) : (
-      <div className="px-5 pt-6">
-        <h2 className="text-lg font-semibold text-primary">{scene.question}</h2>
-        <p className="mt-1 text-xs text-muted-foreground">{scene.hint}</p>
+        <div className="px-5 pt-6">
+          <h2 className="text-lg font-semibold text-primary">{scene.question}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{scene.hint}</p>
 
+          <div className="mt-4 space-y-3">
+            {scene.choices
+              .filter((c) => (dynamicResult ? picked === c.key : true))
+              .map((c, i) => {
+                const active = picked === c.key;
 
-        <div className="mt-4 space-y-3">
-          {scene.choices
-            .filter((c) => (dynamicResult ? picked === c.key : true))
-            .map((c, i) => {
-              const active = picked === c.key;
-
-              return (
-                <button
-                  key={c.key}
-                  onClick={() => onPick(c.key)}
-                  disabled={loading || !!dynamicResult}
-                  className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${
-                    active
-                      ? "border-primary bg-secondary shadow-glow"
-                      : "border-border bg-card/70 hover:bg-secondary/60"
-                  } ${loading || dynamicResult ? "cursor-default" : ""} ${loading ? "opacity-50" : ""}`}
-                >
-                  <span
-                    className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold ${
-                      active ? "bg-romance text-primary-foreground" : "bg-secondary text-muted-foreground"
-                    }`}
+                return (
+                  <button
+                    key={c.key}
+                    onClick={() => onPick(c.key)}
+                    disabled={loading || !!dynamicResult}
+                    className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${
+                      active
+                        ? "border-primary bg-secondary shadow-glow"
+                        : "border-border bg-card/70 hover:bg-secondary/60"
+                    } ${loading || dynamicResult ? "cursor-default" : ""} ${loading ? "opacity-50" : ""}`}
                   >
-                    {dynamicResult ? scene.choices.findIndex((x) => x.key === c.key) + 1 : i + 1}
-                  </span>
-                  <span className="text-sm">{c.label}</span>
-                </button>
-              );
-            })}
-        </div>
-
-        {loading && (
-          <div className="mt-5 rounded-2xl glass-card p-4 text-center text-sm text-muted-foreground">
-            …
+                    <span
+                      className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                        active
+                          ? "bg-romance text-primary-foreground"
+                          : "bg-secondary text-muted-foreground"
+                      }`}
+                    >
+                      {dynamicResult ? scene.choices.findIndex((x) => x.key === c.key) + 1 : i + 1}
+                    </span>
+                    <span className="text-sm">{c.label}</span>
+                  </button>
+                );
+              })}
           </div>
-        )}
-        {!loading && dynamicResult && (
-          <>
-            <div className="mt-5 rounded-2xl glass-card p-4">
-              <p className="text-xs tracking-widest text-accent">剧情走向</p>
-              <p className="mt-2 text-sm leading-relaxed">{dynamicResult.resultText}</p>
+
+          {loading && (
+            <div className="mt-5 rounded-2xl glass-card p-4 text-center text-sm text-muted-foreground">
+              …
             </div>
-            <button
-              onClick={onBack}
-              className="mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
-            >
-              {storyMode ? "下一件事" : "返回小屋"}
-            </button>
-          </>
-        )}
-        <div className="h-8" />
-      </div>
+          )}
+          {!loading && dynamicResult && (
+            <>
+              <div className="mt-5 rounded-2xl glass-card p-4">
+                <p className="text-xs tracking-widest text-accent">剧情走向</p>
+                <p className="mt-2 text-sm leading-relaxed">{dynamicResult.resultText}</p>
+              </div>
+              <button
+                onClick={onBack}
+                className="mt-6 w-full rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
+              >
+                {storyMode ? "下一件事" : "返回小屋"}
+              </button>
+            </>
+          )}
+          <div className="h-8" />
+        </div>
       )}
     </div>
-
   );
 }
 
-function RelationshipsView() {
-  const [openName, setOpenName] = useState<string | null>(null);
-  const list = affinities.filter((a) => genderOf(a.name) !== playerGender);
-  const open = list.find((a) => a.name === openName) ?? null;
+/** 五档心动信号徽标样式（core/heartSignal.ts） */
+const SIGNAL_META: Record<HeartSignal, { label: string; cls: string }> = {
+  none: { label: "静默", cls: "border-border text-muted-foreground" },
+  micro: { label: "微动", cls: "border-sky-400/40 text-sky-400" },
+  crush: { label: "心动", cls: "border-romance/60 text-romance" },
+  critical: { label: "暴击", cls: "border-red-400/50 text-red-400" },
+  jealous: { label: "吃醋", cls: "border-amber-400/50 text-amber-400" },
+};
 
-  if (open) return <AffinityDetail affinity={open} onBack={() => setOpenName(null)} />;
+/** 关系页：数据源 = island store（relationships + eventLog + npcIds），不显示数值 */
+function RelationshipsView() {
+  const island = useIslandStore();
+  const { npcIds, relationships, eventLog } = island;
+
+  // 按方向算五档信号：heartValue 取对应方向好感，moments 由 eventLog deltas 还原
+  const signalOf = (npcId: string, direction: "to_npc" | "from_npc"): HeartSignal => {
+    const rel = relationships[npcId];
+    if (!rel) return "none";
+    const moments: { delta: number }[] = [];
+    for (const entry of eventLog) {
+      for (const d of entry.deltas ?? []) {
+        if (d.npcId === npcId && d.direction === direction) {
+          moments.push({ delta: d.delta });
+        }
+      }
+    }
+    const heartValue = direction === "to_npc" ? rel.toNpc : rel.fromNpc;
+    return getHeartSignal({
+      heartValue,
+      interactionCount: moments.length,
+      moments,
+      todayVotesForOthers: 0,
+    });
+  };
+
+  // 按「你 → TA」好感降序展示；名单以 island store 为准
+  const list = [...npcIds].sort(
+    (a, b) => (relationships[b]?.toNpc ?? 0) - (relationships[a]?.toNpc ?? 0),
+  );
 
   return (
     <div className="px-5 pt-8">
       <header className="text-center">
         <p className="text-xs tracking-widest text-accent">你的视角</p>
         <h1 className="mt-1 text-2xl font-semibold text-primary">心动观察</h1>
-        <p className="mt-2 text-sm text-muted-foreground">你和 TA 们之间，心动值到哪了？</p>
+        <p className="mt-2 text-sm text-muted-foreground">你和 TA 们之间，走到哪一步了？</p>
       </header>
 
-      <div className="mt-6 space-y-3">
-        {list.map((a) => (
-          <button
-            key={a.name}
-            onClick={() => setOpenName(a.name)}
-            className="flex w-full items-center gap-4 rounded-2xl glass-card p-3 text-left transition-transform active:scale-[0.99]"
-          >
-            <Avatar name={a.name} size={64} className="size-16 rounded-2xl" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between">
-                <span
-                  className={`text-sm font-semibold ${
-                    genderOf(a.name) === "f" ? "text-female" : "text-male"
-                  }`}
-                >
-                  {a.name}
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  心动值 <span className="text-romance">{a.value}</span>
-                </span>
-              </div>
-              <p className="mt-1 truncate text-sm text-foreground">{a.status}</p>
-              <HeartBar value={a.value} />
-            </div>
-            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-          </button>
-        ))}
-      </div>
-
-      <div className="h-8" />
-    </div>
-  );
-}
-
-function HeartBar({ value }: { value: number }) {
-  return (
-    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-      <div
-        className="h-full rounded-full bg-romance transition-all"
-        style={{ width: `${Math.max(4, Math.min(100, value))}%` }}
-      />
-    </div>
-  );
-}
-
-function Avatar({
-  name,
-  size,
-  className,
-}: {
-  name: string;
-  size: number;
-  className: string;
-}) {
-  const avatar = avatarOf(name);
-  if (avatar) {
-    return (
-      <img
-        src={avatar}
-        alt={name}
-        loading="lazy"
-        width={size}
-        height={size}
-        className={`${className} object-cover`}
-      />
-    );
-  }
-  return (
-    <div className={`${className} grid place-items-center bg-secondary font-medium`}>
-      {name[0]}
-    </div>
-  );
-}
-
-function AffinityDetail({
-  affinity,
-  onBack,
-}: {
-  affinity: Affinity;
-  onBack: () => void;
-}) {
-  const trend = heartTrend(affinity);
-  const max = Math.max(...trend.map((t) => t.value), affinity.value, 1);
-  const isFemale = genderOf(affinity.name) === "f";
-
-  return (
-    <div className="px-5 pt-6">
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1 text-sm text-muted-foreground"
-      >
-        <ChevronLeft className="size-4" />
-        心动观察
-      </button>
-
-      <div className="mt-4 flex items-center gap-4">
-        <Avatar name={affinity.name} size={80} className="size-20 rounded-3xl" />
-        <div>
-          <p className={`text-lg font-semibold ${isFemale ? "text-female" : "text-male"}`}>
-            {affinity.name}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">{affinity.status}</p>
-          <p className="mt-2 text-sm">
-            当前心动值 <span className="text-xl font-semibold text-romance">{affinity.value}</span>
-          </p>
-        </div>
-      </div>
-
-      <section className="mt-6 rounded-3xl glass-card p-4">
-        <h2 className="text-sm font-semibold">心动值变化</h2>
-        <div className="mt-4 flex h-32 items-end gap-3">
-          {trend.map((t, i) => (
-            <div key={i} className="flex flex-1 flex-col items-center gap-2">
-              <span className="text-[10px] text-muted-foreground">{t.value}</span>
+      {list.length === 0 ? (
+        <p className="mt-6 rounded-2xl border border-dashed border-border/60 px-3 py-4 text-center text-xs text-muted-foreground">
+          名单还没生成，先完成入住吧。
+        </p>
+      ) : (
+        <div className="mt-6 space-y-3">
+          {list.map((id) => {
+            const npc = getNpcById(id);
+            const name = npc?.name ?? id;
+            const male = npc?.gender === "male";
+            const toMeta = SIGNAL_META[signalOf(id, "to_npc")];
+            const fromMeta = SIGNAL_META[signalOf(id, "from_npc")];
+            return (
               <div
-                className="w-full rounded-t-lg bg-romance/70"
-                style={{ height: `${(t.value / max) * 100}%` }}
-              />
-              <span className="text-[10px] text-muted-foreground">{t.day}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="mt-6">
-        <h2 className="text-sm font-semibold">心动瞬间</h2>
-        <ul className="relative mt-4 space-y-4 pl-4">
-          <div className="absolute left-0 top-2 bottom-2 w-px bg-border" aria-hidden />
-          {[...affinity.moments].reverse().map((m, i) => (
-            <li key={i} className="relative rounded-2xl glass-card p-3">
-              <span
-                className="absolute -left-4 top-5 size-2 rounded-full bg-romance"
-                aria-hidden
-              />
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>
-                  {m.day} · {m.time} · {m.place}
-                </span>
-                <span className={m.delta >= 0 ? "text-romance" : "text-muted-foreground"}>
-                  {m.delta >= 0 ? `+${m.delta}` : m.delta}
-                </span>
+                key={id}
+                className="flex w-full items-center gap-4 rounded-2xl glass-card p-3 text-left"
+              >
+                {npc?.avatar ? (
+                  <img
+                    src={npc.avatar}
+                    alt={name}
+                    loading="lazy"
+                    width={64}
+                    height={64}
+                    className="size-16 rounded-2xl object-cover"
+                  />
+                ) : (
+                  <div
+                    className={`grid size-16 shrink-0 place-items-center rounded-2xl bg-secondary text-lg font-medium ${
+                      male ? "text-male" : "text-female"
+                    }`}
+                  >
+                    {name.slice(0, 1)}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between">
+                    <span className={`text-sm font-semibold ${male ? "text-male" : "text-female"}`}>
+                      {name}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] ${toMeta.cls}`}>
+                      你 → TA · {toMeta.label}
+                    </span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] ${fromMeta.cls}`}>
+                      TA → 你 · {fromMeta.label}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <p className="mt-1.5 text-sm text-foreground">{m.text}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
+            );
+          })}
+        </div>
+      )}
 
       <div className="h-8" />
     </div>
   );
 }
-
-
 
 function MeView() {
   return (
     <div className="px-5 pt-8">
       <header className="text-center">
-        <h1 className="text-3xl font-semibold tracking-[0.2em] text-primary">
-          我的恋综档案
-        </h1>
+        <h1 className="text-3xl font-semibold tracking-[0.2em] text-primary">我的恋综档案</h1>
         <p className="mt-2 text-sm text-muted-foreground">记录你的心动旅程</p>
       </header>
 
@@ -1198,7 +1345,9 @@ function MeView() {
                   aria-hidden
                 />
                 <span className="w-12 text-xs text-muted-foreground">{item.day}</span>
-                <span className={`text-sm ${index === storyTimeline.length - 1 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                <span
+                  className={`text-sm ${index === storyTimeline.length - 1 ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                >
                   {item.title}
                 </span>
               </li>
@@ -1217,13 +1366,7 @@ function MeView() {
   );
 }
 
-function TabBar({
-  active,
-  onChange,
-}: {
-  active: TabKey;
-  onChange: (t: TabKey) => void;
-}) {
+function TabBar({ active, onChange }: { active: TabKey; onChange: (t: TabKey) => void }) {
   const items: { key: TabKey; icon: typeof Home; label: string }[] = [
     { key: "house", icon: Home, label: "小屋" },
     { key: "relationships", icon: Heart, label: "心动观察" },
@@ -1254,21 +1397,21 @@ function TabBar({
   );
 }
 
-/** 7 天旅程时间轴 */
-function JourneyTimeline() {
-  const [open, setOpen] = useState<number | null>(currentDay);
-  const [finale, setFinale] = useState(false);
+/** 7 天旅程时间轴（currentDay 从 island store 读；主题文案仍用 house.ts journey） */
+function JourneyTimeline({ onOpenFinale }: { onOpenFinale: () => void }) {
+  const day = useIslandStore((s) => s.day);
+  const [open, setOpen] = useState<number | null>(day);
 
   return (
     <section className="mt-5 px-5">
       <div className="flex items-baseline justify-between">
         <h2 className="text-sm font-medium">7 天旅程</h2>
-        <span className="text-[11px] text-muted-foreground">Day {currentDay} / 7</span>
+        <span className="text-[11px] text-muted-foreground">Day {day} / 7</span>
       </div>
 
       <div className="mt-3 flex items-center gap-1">
         {journey.map((d) => {
-          const state = d.day < currentDay ? "past" : d.day === currentDay ? "now" : "future";
+          const state = d.day < day ? "past" : d.day === day ? "now" : "future";
           return (
             <button
               key={d.day}
@@ -1296,7 +1439,7 @@ function JourneyTimeline() {
                   )}
                 </span>
                 <span
-                  className={`h-[2px] flex-1 ${d.day < currentDay ? "bg-primary/60" : "bg-border"} ${
+                  className={`h-[2px] flex-1 ${d.day < day ? "bg-primary/60" : "bg-border"} ${
                     d.day === journey.length ? "opacity-0" : ""
                   }`}
                 />
@@ -1325,11 +1468,11 @@ function JourneyTimeline() {
             {journey[open - 1]!.desc}
           </p>
           <p className="mt-2 text-[11px] text-accent">
-            {open < currentDay ? "已经过去" : open === currentDay ? "正在进行" : "还没发生"}
+            {open < day ? "已经过去" : open === day ? "正在进行" : "还没发生"}
           </p>
           {open === journey.length && (
             <button
-              onClick={() => setFinale(true)}
+              onClick={onOpenFinale}
               className="mt-3 w-full rounded-xl bg-primary py-2.5 text-xs font-medium text-primary-foreground transition-transform active:scale-[0.98]"
             >
               查看七日结语 · 你的小屋档案
@@ -1337,8 +1480,6 @@ function JourneyTimeline() {
           )}
         </div>
       )}
-
-      {finale && <FinaleReport onClose={() => setFinale(false)} />}
     </section>
   );
 }

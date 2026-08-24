@@ -1,5 +1,3 @@
-const API_BASE = "http://localhost:3001";
-
 export type ApiScene = {
   id: string;
   place: string;
@@ -31,7 +29,7 @@ export type ChoiceResponse = {
 };
 
 export async function fetchScene(id: string): Promise<ApiScene> {
-  const res = await fetch(`${API_BASE}/api/scenes/${id}`);
+  const res = await fetch(`/api/scenes/${id}`);
   if (!res.ok) throw new Error(`fetchScene ${id}: ${res.status}`);
   return res.json();
 }
@@ -41,12 +39,45 @@ export async function postChoice(input: {
   choiceKey: "A" | "B" | "C";
   worldState: WorldState;
 }): Promise<ChoiceResponse> {
-  const res = await fetch(`${API_BASE}/api/choice`, {
+  const res = await fetch(`/api/choice`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error ?? `postChoice ${res.status}`);
+  return data;
+}
+
+export async function postChat(input: {
+  member: { name: string; where: string; gender: string };
+  history: Array<{ from: "me" | "ta"; text: string }>;
+  userMessage: string;
+}): Promise<{ reply: string }> {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error ?? `postChat ${res.status}`);
+  return data;
+}
+
+export async function postNarration(input: {
+  day: number;
+  eventTitle: string;
+  location: string;
+  context: string;
+  choice: string;
+  fallback: string;
+}): Promise<{ resultText: string }> {
+  const res = await fetch("/api/narrate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error ?? `postNarration ${res.status}`);
   return data;
 }

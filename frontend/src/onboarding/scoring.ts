@@ -6,9 +6,21 @@
  */
 
 import type {
-  MbtiQuestion, AttachmentQuestion, IntentType, AttachmentType, IcebergPersonality,
-  SceneKey, StageKey, TestResult, MBTI, ResolveInput, ResolveResult,
-  PlayerProfile, NPC, MatchTier, CandidateInfo,
+  MbtiQuestion,
+  AttachmentQuestion,
+  IntentType,
+  AttachmentType,
+  IcebergPersonality,
+  SceneKey,
+  StageKey,
+  TestResult,
+  MBTI,
+  ResolveInput,
+  ResolveResult,
+  PlayerProfile,
+  NPC,
+  MatchTier,
+  CandidateInfo,
 } from "./types";
 import { NPC_LIBRARY, getOppositeGenderNpcs } from "./npcLibrary";
 
@@ -18,14 +30,54 @@ import { NPC_LIBRARY, getOppositeGenderNpcs } from "./npcLibrary";
 
 /** A.1 MBTI 四轴（第 1-8 题） */
 export const MBTI_QUESTIONS: MbtiQuestion[] = [
-  { q: 1, axis: "EI", A: { label: "家里看片做饭", score: { I: 1 } }, B: { label: "出门逛街见朋友", score: { E: 1 } } },
-  { q: 2, axis: "EI", A: { label: "慢慢观察再靠近", score: { I: 1 } }, B: { label: "自来熟直接聊", score: { E: 1 } } },
-  { q: 3, axis: "SN", A: { label: "眼前的心动感觉", score: { S: 1 } }, B: { label: "聊得来的精神共鸣", score: { N: 1 } } },
-  { q: 4, axis: "SN", A: { label: "具体的样子和习惯", score: { S: 1 } }, B: { label: "我们之间的化学反应", score: { N: 1 } } },
-  { q: 5, axis: "TF", A: { label: "讲道理分析对错", score: { T: 1 } }, B: { label: "先在乎对方情绪", score: { F: 1 } } },
-  { q: 6, axis: "TF", A: { label: "帮 TA 想解决办法", score: { T: 1 } }, B: { label: "抱抱 TA 说没事", score: { F: 1 } } },
-  { q: 7, axis: "JP", A: { label: "有规划稳步推进", score: { J: 1 } }, B: { label: "顺其自然看感觉", score: { P: 1 } } },
-  { q: 8, axis: "JP", A: { label: "想尽快确定关系", score: { J: 1 } }, B: { label: "享受这种模糊感", score: { P: 1 } } },
+  {
+    q: 1,
+    axis: "EI",
+    A: { label: "家里看片做饭", score: { I: 1 } },
+    B: { label: "出门逛街见朋友", score: { E: 1 } },
+  },
+  {
+    q: 2,
+    axis: "EI",
+    A: { label: "慢慢观察再靠近", score: { I: 1 } },
+    B: { label: "自来熟直接聊", score: { E: 1 } },
+  },
+  {
+    q: 3,
+    axis: "SN",
+    A: { label: "眼前的心动感觉", score: { S: 1 } },
+    B: { label: "聊得来的精神共鸣", score: { N: 1 } },
+  },
+  {
+    q: 4,
+    axis: "SN",
+    A: { label: "具体的样子和习惯", score: { S: 1 } },
+    B: { label: "我们之间的化学反应", score: { N: 1 } },
+  },
+  {
+    q: 5,
+    axis: "TF",
+    A: { label: "讲道理分析对错", score: { T: 1 } },
+    B: { label: "先在乎对方情绪", score: { F: 1 } },
+  },
+  {
+    q: 6,
+    axis: "TF",
+    A: { label: "帮 TA 想解决办法", score: { T: 1 } },
+    B: { label: "抱抱 TA 说没事", score: { F: 1 } },
+  },
+  {
+    q: 7,
+    axis: "JP",
+    A: { label: "有规划稳步推进", score: { J: 1 } },
+    B: { label: "顺其自然看感觉", score: { P: 1 } },
+  },
+  {
+    q: 8,
+    axis: "JP",
+    A: { label: "想尽快确定关系", score: { J: 1 } },
+    B: { label: "享受这种模糊感", score: { P: 1 } },
+  },
 ];
 
 export const MBTI_QUESTION_TITLES: Record<number, string> = {
@@ -41,10 +93,34 @@ export const MBTI_QUESTION_TITLES: Record<number, string> = {
 
 /** A.2 依恋类型（第 9-12 题） */
 export const ATTACHMENT_QUESTIONS: AttachmentQuestion[] = [
-  { q: 9, title: "对方几小时没回消息，你会？", anx: "反复看手机胡思乱想", avo: "无所谓各忙各的", safe: "有点在意但能等" },
-  { q: 10, title: "关系变亲密时，你？", anx: "想要更多确认和保证", avo: "想留点自己的空间", safe: "享受靠近也不慌" },
-  { q: 11, title: "你最怕关系里的？", anx: "被冷落被抛弃", avo: "被束缚失去自由", safe: "都还好能沟通" },
-  { q: 12, title: "对方想深入了解你，你？", anx: "开心终于有人懂我", avo: "有点抗拒不想全暴露", safe: "愿意慢慢敞开" },
+  {
+    q: 9,
+    title: "对方几小时没回消息，你会？",
+    anx: "反复看手机胡思乱想",
+    avo: "无所谓各忙各的",
+    safe: "有点在意但能等",
+  },
+  {
+    q: 10,
+    title: "关系变亲密时，你？",
+    anx: "想要更多确认和保证",
+    avo: "想留点自己的空间",
+    safe: "享受靠近也不慌",
+  },
+  {
+    q: 11,
+    title: "你最怕关系里的？",
+    anx: "被冷落被抛弃",
+    avo: "被束缚失去自由",
+    safe: "都还好能沟通",
+  },
+  {
+    q: 12,
+    title: "对方想深入了解你，你？",
+    anx: "开心终于有人懂我",
+    avo: "有点抗拒不想全暴露",
+    safe: "愿意慢慢敞开",
+  },
 ];
 
 export const ATTACHMENT_RULES = { anx_weight: 2, avo_weight: 2, threshold: 4 } as const;
@@ -65,12 +141,17 @@ export function calcTestResult(
     const pick = mbtiAnswers[idx];
     if (!pick) return;
     const scoreMap = pick === "A" ? q.A.score : q.B.score;
-    Object.entries(scoreMap).forEach(([k, v]) => { axes[k] = (axes[k] ?? 0) + (v ?? 0); });
+    Object.entries(scoreMap).forEach(([k, v]) => {
+      axes[k] = (axes[k] ?? 0) + (v ?? 0);
+    });
   });
 
   const weakAxes: string[] = [];
   const axisPairs: [string, string, string][] = [
-    ["I", "E", "EI"], ["S", "N", "SN"], ["T", "F", "TF"], ["J", "P", "JP"],
+    ["I", "E", "EI"],
+    ["S", "N", "SN"],
+    ["T", "F", "TF"],
+    ["J", "P", "JP"],
   ];
 
   let mbti = "";
@@ -79,10 +160,14 @@ export function calcTestResult(
     const vs = axes[second] ?? 0;
     if (vf > vs) mbti += first;
     else if (vs > vf) mbti += second;
-    else { mbti += first; weakAxes.push(axisName); }
+    else {
+      mbti += first;
+      weakAxes.push(axisName);
+    }
   });
 
-  let anx = 0, avo = 0;
+  let anx = 0,
+    avo = 0;
   attachAnswers.forEach((a) => {
     if (a === "anx") anx += ATTACHMENT_RULES.anx_weight;
     if (a === "avo") avo += ATTACHMENT_RULES.avo_weight;
@@ -103,10 +188,10 @@ export function calcTestResult(
 // ============================================================
 
 export const BASE_MATRIX: Record<IntentType, Record<AttachmentType, number>> = {
-  probe:     { secure: 3, anxious: 3, avoidant: 4 },
-  advance:   { secure: 4, anxious: 6, avoidant: -3 },
-  soothe:    { secure: 3, anxious: 7, avoidant: 2 },
-  humor:     { secure: 4, anxious: 2, avoidant: 3 },
+  probe: { secure: 3, anxious: 3, avoidant: 4 },
+  advance: { secure: 4, anxious: 6, avoidant: -3 },
+  soothe: { secure: 3, anxious: 7, avoidant: 2 },
+  humor: { secure: 4, anxious: 2, avoidant: 3 },
   adventure: { secure: 3, anxious: 4, avoidant: -5 },
 };
 
@@ -139,7 +224,11 @@ export const ICEBERG_THRESHOLDS = [10, 25, 45, 65]; // 对应 L1→L4
  * 公式：Δ = 基础值(intent, attachment) × 场景系数(scene) × 阶段系数(stage)
  *       + 命中核心需求奖励(+2) + 深夜加成(×1.3 已含在场景系数中)
  */
-export function resolveInteraction(input: ResolveInput, npc: NPC, currentHeartValue: number): ResolveResult {
+export function resolveInteraction(
+  input: ResolveInput,
+  npc: NPC,
+  currentHeartValue: number,
+): ResolveResult {
   const base = BASE_MATRIX[input.intent][npc.attachment];
   const sceneMult = input.isNight ? SCENE_MULT.private_night : SCENE_MULT.private_day;
 
@@ -152,7 +241,8 @@ export function resolveInteraction(input: ResolveInput, npc: NPC, currentHeartVa
 
   // 命中核心需求奖励
   // 简化处理：推进/安抚类意图有概率命中
-  const coreNeedHit = (input.intent === "advance" || input.intent === "soothe") && Math.random() > 0.6;
+  const coreNeedHit =
+    (input.intent === "advance" || input.intent === "soothe") && Math.random() > 0.6;
   const coreNeedBonus = coreNeedHit ? 2 : 0;
   delta += coreNeedBonus;
 
@@ -164,8 +254,8 @@ export function resolveInteraction(input: ResolveInput, npc: NPC, currentHeartVa
   const newStage = getStageFromValue(newValue);
 
   // 判断是否解锁冰山线索
-  const prevCluesUnlocked = ICEBERG_THRESHOLDS.filter(t => currentHeartValue >= t).length;
-  const newCluesUnlocked = ICEBERG_THRESHOLDS.filter(t => newValue >= t).length;
+  const prevCluesUnlocked = ICEBERG_THRESHOLDS.filter((t) => currentHeartValue >= t).length;
+  const newCluesUnlocked = ICEBERG_THRESHOLDS.filter((t) => newValue >= t).length;
   const unlocksIcebergClue = newCluesUnlocked > prevCluesUnlocked;
 
   // 生成 NPC 反应文本
@@ -194,12 +284,12 @@ export function getStageFromValue(value: number): StageKey {
 // ============================================================
 
 export interface MatchingConfig {
-  HIGH_AFFINITY_MIN: number;  // 高契合最低分
-  CONTRAST_MIN: number;       // 反差吸引最低分
-  RED_FLAG_MAX: number;       // 雷区最高分
-  MAX_SWAP_COUNT: number;     // 最大换一批次数
-  REQUIRED_COUNT: number;     // 需要选出的人数
-  FORCE_RED_FLAG: boolean;    // 是否强制包含至少一个雷区
+  HIGH_AFFINITY_MIN: number; // 高契合最低分
+  CONTRAST_MIN: number; // 反差吸引最低分
+  RED_FLAG_MAX: number; // 雷区最高分
+  MAX_SWAP_COUNT: number; // 最大换一批次数
+  REQUIRED_COUNT: number; // 需要选出的人数
+  FORCE_RED_FLAG: boolean; // 是否强制包含至少一个雷区
 }
 
 export const MATCHING_CONFIG: MatchingConfig = {
@@ -223,7 +313,10 @@ export function calculateCandidatePool(player: PlayerProfile): CandidateInfo[] {
     return { npcId: npc.id, tier, matchScore: score.score, reasons: score.reasons };
   });
   const tierOrder: Record<MatchTier, number> = {
-    high_affinity: 0, contrast: 1, red_flag: 2, filler: 3,
+    high_affinity: 0,
+    contrast: 1,
+    red_flag: 2,
+    filler: 3,
   };
   scored.sort((a, b) => tierOrder[a.tier] - tierOrder[b.tier] || b.matchScore - a.matchScore);
   return scored;
@@ -237,7 +330,7 @@ export function calculateCandidatePool(player: PlayerProfile): CandidateInfo[] {
  */
 export function calculateMatchingPool(player: PlayerProfile): CandidateInfo[] {
   const candidates = getOppositeGenderNpcs(player.gender);
-  const scored: CandidateInfo[] = candidates.map(npc => {
+  const scored: CandidateInfo[] = candidates.map((npc) => {
     const score = computeMatchScore(player, npc);
     const tier = classifyTier(score.score, player, npc);
     return { npcId: npc.id, tier, matchScore: score.score, reasons: score.reasons };
@@ -245,7 +338,10 @@ export function calculateMatchingPool(player: PlayerProfile): CandidateInfo[] {
 
   // 排序：高契合 > 反差 > 雷区 > 填充
   const tierOrder: Record<MatchTier, number> = {
-    high_affinity: 0, contrast: 1, red_flag: 2, filler: 3,
+    high_affinity: 0,
+    contrast: 1,
+    red_flag: 2,
+    filler: 3,
   };
   scored.sort((a, b) => tierOrder[a.tier] - tierOrder[b.tier] || b.matchScore - a.matchScore);
 
@@ -253,7 +349,10 @@ export function calculateMatchingPool(player: PlayerProfile): CandidateInfo[] {
   return scored.slice(0, MATCHING_CONFIG.REQUIRED_COUNT);
 }
 
-interface ScoreResult { score: number; reasons: string[] }
+interface ScoreResult {
+  score: number;
+  reasons: string[];
+}
 
 function computeMatchScore(player: PlayerProfile, npc: NPC): ScoreResult {
   let score = 50; // 基准分
@@ -271,18 +370,21 @@ function computeMatchScore(player: PlayerProfile, npc: NPC): ScoreResult {
   reasons.push(`依恋互动 ${attachBonus >= 0 ? "+" : ""}${attachBonus}`);
 
   // 3. 特质匹配（每个匹配 +3）
-  const traitMatches = player.weakAxes.filter(wa =>
-    npc.traits.some(t => t.toLowerCase().includes(wa.toLowerCase()) ||
-                         wa.toLowerCase().includes(t.toLowerCase()))
+  const traitMatches = player.weakAxes.filter((wa) =>
+    npc.traits.some(
+      (t) =>
+        t.toLowerCase().includes(wa.toLowerCase()) || wa.toLowerCase().includes(t.toLowerCase()),
+    ),
   ).length;
   score += traitMatches * 3;
   if (traitMatches > 0) reasons.push(`弱轴互补 +${traitMatches * 3}`);
 
   // 4. 雷区检测（每个命中 -8）
-  const redFlagHits = npc.redFlags.filter(rf =>
-    player.weakAxes.some(wa =>
-      wa.toLowerCase().includes(rf.toLowerCase()) || rf.toLowerCase().includes(wa.toLowerCase())
-    )
+  const redFlagHits = npc.redFlags.filter((rf) =>
+    player.weakAxes.some(
+      (wa) =>
+        wa.toLowerCase().includes(rf.toLowerCase()) || rf.toLowerCase().includes(wa.toLowerCase()),
+    ),
   ).length;
   score -= redFlagHits * 8;
   if (redFlagHits > 0) reasons.push(`⚠️ 雷区 -${redFlagHits * 8}`);
@@ -293,10 +395,14 @@ function computeMatchScore(player: PlayerProfile, npc: NPC): ScoreResult {
 function computeMbtiCompatibility(a: MBTI, b: MBTI): number {
   let bonus = 0;
   const pairs: [string, string, string][] = [
-    [a[0]!, b[0]!, "EI"], [a[1]!, b[1]!, "SN"], [a[2]!, b[2]!, "TF"], [a[3]!, b[3]!, "JP"],
+    [a[0]!, b[0]!, "EI"],
+    [a[1]!, b[1]!, "SN"],
+    [a[2]!, b[2]!, "TF"],
+    [a[3]!, b[3]!, "JP"],
   ];
   pairs.forEach(([ca, cb, _axis]) => {
-    if (ca === cb) bonus -= 2; // 相同偏内向减分（缺少火花）
+    if (ca === cb)
+      bonus -= 2; // 相同偏内向减分（缺少火花）
     else bonus += 4; // 不同轴互补加分
   });
   return Math.max(-15, Math.min(15, bonus));
@@ -304,8 +410,8 @@ function computeMbtiCompatibility(a: MBTI, b: MBTI): number {
 
 function computeAttachmentInteraction(a: AttachmentType, b: AttachmentType): number {
   const matrix: Record<AttachmentType, Record<AttachmentType, number>> = {
-    secure:   { secure: 5, anxious: 3, avoidant: 2 },
-    anxious:  { secure: 3, anxious: -4, avoidant: -8 },
+    secure: { secure: 5, anxious: 3, avoidant: 2 },
+    anxious: { secure: 3, anxious: -4, avoidant: -8 },
     avoidant: { secure: 2, avoidant: -4, anxious: -8 },
   };
   return matrix[a]?.[b] ?? 0;

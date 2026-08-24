@@ -9,12 +9,7 @@
  *   done             → 由外层 AppRoot 切到 HouseApp（本组件不处理）
  */
 import { useGameStore } from "../stores/useOnboardingStore";
-import {
-  ProfileSetup,
-  PersonalityTest,
-  MatchingSelection,
-  IntroScene,
-} from "./OnboardingScreens";
+import { ProfileSetup, PersonalityTest, MatchingSelection, IntroScene } from "./OnboardingScreens";
 
 export function OnboardingApp() {
   const phase = useGameStore((s) => s.phase);
