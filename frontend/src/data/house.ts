@@ -55,6 +55,7 @@ export const microEvents: { time: string; text: string }[] = [
 
 
 export type Member = {
+  id?: string;
   name: string;
   gender: Gender;
   where: string;

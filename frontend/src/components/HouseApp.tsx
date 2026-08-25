@@ -605,6 +605,7 @@ function HomeView({
     ? onboardingRoster.map((storedNpc, index) => {
         const npc = getNpcById(storedNpc.id) ?? storedNpc;
         return {
+          id: npc.id,
           name: npc.name,
           gender: npc.gender === "male" ? "m" : "f",
           where: `在${ROOMS[index % ROOMS.length]}`,
@@ -954,6 +955,11 @@ function ChatSheet({
   onClose: () => void;
   onLog: (e: ChatLogEntry) => void;
 }) {
+  const day = useIslandStore((state) => state.day);
+  const relationship = useIslandStore((state) =>
+    member.id ? state.relationships[member.id] : undefined,
+  );
+  const playerName = useGameStore((state) => state.playerProfile?.name);
   const tone = member.gender === "m" ? "text-male" : "text-female";
   const [msgs, setMsgs] = useState<ChatMsg[]>([
     { from: "ta", text: `（${member.where}）嗯？你怎么过来了。` },
@@ -978,9 +984,19 @@ function ChatSheet({
     let reply = fallbackReply;
     try {
       const result = await postChat({
-        member: { name: member.name, where: member.where, gender: member.gender },
+        member: {
+          ...(member.id ? { id: member.id } : {}),
+          name: member.name,
+          where: member.where,
+          gender: member.gender,
+        },
         history: msgs,
         userMessage: message,
+        context: {
+          day,
+          ...(playerName ? { playerName } : {}),
+          ...(relationship ? { heartValue: relationship.fromNpc } : {}),
+        },
       });
       reply = result.reply;
     } catch (error) {
