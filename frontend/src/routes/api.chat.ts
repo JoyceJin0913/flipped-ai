@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { callDoubao, cleanText, rateLimit, rejectCrossOrigin } from "@/lib/doubao.server";
+import { buildNpcSystemPrompt } from "@/core/npcSystemPrompts";
 
 type ChatBody = {
-  member?: { name?: unknown; where?: unknown; gender?: unknown };
+  member?: { id?: unknown; name?: unknown; where?: unknown; gender?: unknown };
   history?: Array<{ from?: unknown; text?: unknown }>;
   userMessage?: unknown;
+  context?: { day?: unknown; playerName?: unknown; heartValue?: unknown };
 };
 
 export const Route = createFileRoute("/api/chat")({
@@ -17,7 +19,9 @@ export const Route = createFileRoute("/api/chat")({
         try {
           const body = (await request.json()) as ChatBody;
           const name = cleanText(body.member?.name, 20);
+          const npcId = cleanText(body.member?.id, 30);
           const where = cleanText(body.member?.where, 30);
+          const playerName = cleanText(body.context?.playerName, 20);
           const userMessage = cleanText(body.userMessage, 240);
           if (!name || !userMessage) {
             return Response.json({ error: "member.name 和 userMessage 必填" }, { status: 400 });
@@ -34,7 +38,18 @@ export const Route = createFileRoute("/api/chat")({
           const result = await callDoubao([
             {
               role: "system",
-              content: `你正在扮演恋爱真人秀《心动岛》的嘉宾“${name}”。当前地点：${where || "小屋"}。用自然、克制、带一点暧昧的中文口语回应玩家。只能依据当前小屋场景和已提供的对话作答，不得编造房东、工作通知、外部消息等未提供的经历。保持人物边界，不替玩家做决定，不提及自己是 AI，不输出舞台说明、列表或 Markdown。回复 1 到 3 句，最多 90 个汉字。`,
+              content: buildNpcSystemPrompt({
+                ...(npcId ? { npcId } : {}),
+                name,
+                ...(where ? { location: where } : {}),
+                ...(typeof body.context?.day === "number"
+                  ? { day: Math.max(1, Math.min(7, Math.trunc(body.context.day))) }
+                  : {}),
+                ...(playerName ? { playerName } : {}),
+                ...(typeof body.context?.heartValue === "number"
+                  ? { heartValue: body.context.heartValue }
+                  : {}),
+              }),
             },
             ...history,
             { role: "user", content: userMessage },

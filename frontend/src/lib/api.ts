@@ -50,9 +50,10 @@ export async function postChoice(input: {
 }
 
 export async function postChat(input: {
-  member: { name: string; where: string; gender: string };
+  member: { id?: string; name: string; where: string; gender: string };
   history: Array<{ from: "me" | "ta"; text: string }>;
   userMessage: string;
+  context?: { day?: number; playerName?: string; heartValue?: number };
 }): Promise<{ reply: string }> {
   const res = await fetch("/api/chat", {
     method: "POST",
