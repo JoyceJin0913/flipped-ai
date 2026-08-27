@@ -123,6 +123,22 @@ const playerApproached: DecisionEventSpec = {
       intent: "expose_self",
       risk: "safe",
       text: "顺着{搭话NPC}的话接下去，简单说说自己",
+      requires: {
+        kind: "any_of",
+        of: [
+          {
+            kind: "relationship_metric",
+            npc: { kind: "fact", key: "day1_first_speaker" },
+            metric: "tension",
+            max: 40,
+          },
+          {
+            kind: "memory_tag",
+            npc: { kind: "fact", key: "day1_first_speaker" },
+            tag: "support",
+          },
+        ],
+      },
       effects: [
         {
           npc: { kind: "fact", key: "day1_first_speaker" },
@@ -130,6 +146,20 @@ const playerApproached: DecisionEventSpec = {
           note: "自我暴露 L1",
         },
       ],
+      fallback: {
+        id: "a_guarded_reply",
+        slot: "A",
+        intent: "deflect",
+        risk: "safe",
+        text: "先简短回应{搭话NPC}，把话题留在轻松的范围",
+        effects: [
+          {
+            npc: { kind: "fact", key: "day1_first_speaker" },
+            delta: 1,
+            note: "张力较高且无支持记忆时的保守回应",
+          },
+        ],
+      },
     },
     {
       id: "a_point_out",

@@ -22,6 +22,13 @@ import type { AttachmentType } from "@/onboarding/types";
 import { settle } from "./referee/settlement";
 import { buildActorOutput } from "./intents";
 import { buildPersonalityVector } from "./personalityVector";
+import type { NpcOutputContext } from "./outputContext";
+import {
+  deriveRelationshipRoles,
+  hasMemoryTag,
+  rankEventCast,
+  readRelationshipMetric,
+} from "./relationshipEngine";
 import { getStageFromValue } from "@/onboarding/scoring";
 import type {
   CustomCondId,
@@ -60,6 +67,11 @@ export interface EngineContext {
   day: number;
   eventIndex: number;
   eventLog: EngineEventLogEntry[];
+  /** Unified read models. Optional so legacy fixtures and callers keep their exact behavior. */
+  outputContexts?: {
+    eventCast: Record<string, NpcOutputContext>;
+    eventChoices: Record<string, NpcOutputContext>;
+  };
   /** 随机源（smoke 注入定值实现确定性） */
   random: () => number;
 }
@@ -183,6 +195,9 @@ function nx(ctx: EngineContext, npcId: string): number {
 
 /** 玩家好感最高 NPC（并列取 npcIds 顺序靠前；与 store.highestNpcId 同规则） */
 export function highestNpc(ctx: EngineContext): string | null {
+  if (ctx.outputContexts?.eventCast) {
+    return rankEventCast(ctx.npcIds, ctx.outputContexts.eventCast)[0] ?? null;
+  }
   let best: string | null = null;
   let bestValue = -Infinity;
   for (const id of ctx.npcIds) {
@@ -197,6 +212,9 @@ export function highestNpc(ctx: EngineContext): string | null {
 
 /** 玩家好感第二的 NPC（与 store.secondNpcId 同规则） */
 export function secondNpc(ctx: EngineContext): string | null {
+  if (ctx.outputContexts?.eventCast) {
+    return rankEventCast(ctx.npcIds, ctx.outputContexts.eventCast)[1] ?? null;
+  }
   let first: string | null = null;
   let firstValue = -Infinity;
   let second: string | null = null;
@@ -214,6 +232,27 @@ export function secondNpc(ctx: EngineContext): string | null {
     }
   }
   return second;
+}
+
+function eventChoiceContext(ctx: EngineContext, npcId: string): NpcOutputContext | null {
+  return ctx.outputContexts?.eventChoices[npcId] ?? ctx.outputContexts?.eventCast[npcId] ?? null;
+}
+
+function highestFrom(ctx: EngineContext, npcIds: readonly string[]): string | null {
+  if (npcIds.length === 0) return null;
+  if (ctx.outputContexts?.eventCast) {
+    return rankEventCast(npcIds, ctx.outputContexts.eventCast)[0] ?? null;
+  }
+  let best: string | null = null;
+  let bestValue = -Infinity;
+  for (const id of npcIds) {
+    const value = px(ctx, id);
+    if (value > bestValue) {
+      best = id;
+      bestValue = value;
+    }
+  }
+  return best;
 }
 
 /** 事件焦点：focus 字段 > 玩家最高好感 */
@@ -447,16 +486,7 @@ function silentNpcId(ctx: EngineContext): string | null {
 
   const silent = ctx.npcIds.filter((id) => !speakers.has(id));
   if (silent.length === 0) return highestNpc(ctx);
-  let best: string | null = null;
-  let bestValue = -Infinity;
-  for (const id of silent) {
-    const v = px(ctx, id);
-    if (v > bestValue) {
-      bestValue = v;
-      best = id;
-    }
-  }
-  return best;
+  return highestFrom(ctx, silent);
 }
 
 /** 当天沉默人数（custom d1_three_silent / d3_two_silent 共用） */
@@ -662,16 +692,7 @@ function stayGroup(ctx: EngineContext): string[] {
 function stayGroupHighest(ctx: EngineContext): string | null {
   const group = stayGroup(ctx);
   if (group.length === 0) return secondNpc(ctx);
-  let best: string | null = null;
-  let bestValue = -Infinity;
-  for (const id of group) {
-    const v = px(ctx, id);
-    if (v > bestValue) {
-      bestValue = v;
-      best = id;
-    }
-  }
-  return best;
+  return highestFrom(ctx, group);
 }
 
 /** 预选玩家的 NPC 名单（day6_early_declares JSON 中目标为 player 者） */
@@ -1083,6 +1104,29 @@ export function evaluateRequire(
       const value = npcId ? px(ctx, npcId) : -1;
       const pass = npcId !== null && value >= min;
       return pass ? { pass: true } : { pass: false, lockLabel: affinityLabel(min) };
+    }
+    case "relationship_metric": {
+      const npcId = resolveNpcRef(cond.npc, ctx, opts);
+      const context = npcId ? eventChoiceContext(ctx, npcId) : null;
+      if (!context) return { pass: false, lockLabel: "关系状态尚未建立" };
+      const value = readRelationshipMetric(context, cond.metric);
+      const pass =
+        (cond.min === undefined || value >= cond.min) &&
+        (cond.max === undefined || value <= cond.max);
+      if (pass) return { pass: true };
+      const bounds = [
+        cond.min === undefined ? null : `≥${cond.min}`,
+        cond.max === undefined ? null : `≤${cond.max}`,
+      ]
+        .filter((part): part is string => part !== null)
+        .join(" ");
+      return { pass: false, lockLabel: `关系条件 ${bounds} 未满足` };
+    }
+    case "memory_tag": {
+      const npcId = resolveNpcRef(cond.npc, ctx, opts);
+      const context = npcId ? eventChoiceContext(ctx, npcId) : null;
+      const pass = context !== null && hasMemoryTag(context, cond.tag);
+      return pass ? { pass: true } : { pass: false, lockLabel: "尚未共同经历相关事件" };
     }
     case "attachment_is": {
       const npcId = resolveNpcRef(cond.npc, ctx, opts);
@@ -1807,7 +1851,7 @@ function hookD4GenerateInvites(ctx: EngineContext): EngineResult {
     avoidant: 2,
   };
 
-  // 1. 候选邀请者 = nx ≥ 50；排序分 = nx × 依恋系数 × 扰动 0.9~1.1
+  // 1. 生成全屋配对顺序；真正邀请玩家者另按 Relationship Engine 门槛筛选。
   const candidates = ctx.npcIds
     .filter((id) => nx(ctx, id) >= 50)
     .map((id) => ({
@@ -1827,17 +1871,14 @@ function hookD4GenerateInvites(ctx: EngineContext): EngineResult {
     return idx === -1 ? 999 : idx;
   };
 
-  // 2. 邀请目标：nx ≥ 55 且 px ≥ 40 → 邀请玩家
+  // 2. 邀请玩家：旧上下文用双向阈值；新上下文使用派生 inviter，允许 0/1/2 位。
   const wantsPlayer = inviters.filter((id) => nx(ctx, id) >= 55 && px(ctx, id) >= 40);
-  let playerInviters = [...wantsPlayer];
-
-  // 3. 分支保证：恰 1 位 → 追加 1 名次高排序分者邀请玩家
-  if (wantsPlayer.length === 1) {
-    const extra =
-      pool.find((s) => !inviters.includes(s.id) && nx(ctx, s.id) >= 55 && px(ctx, s.id) >= 40) ??
-      pool.find((s) => !inviters.includes(s.id));
-    if (extra) playerInviters = [wantsPlayer[0] as string, extra.id];
-  }
+  const contexts = ctx.outputContexts?.eventCast;
+  const playerInviters = (
+    contexts
+      ? deriveRelationshipRoles(ctx.npcIds, contexts).inviters.map((role) => role.npcId)
+      : wantsPlayer
+  ).slice(0, 2);
 
   // 发出顺序：依恋类型（anxious 先 / secure 中 / avoidant 后）内按排序分降序
   const emitOrder = (ids: string[]): string[] =>
@@ -1856,12 +1897,8 @@ function hookD4GenerateInvites(ctx: EngineContext): EngineResult {
   // 配对：玩家邀请者 → "player"；其余 → 好感最高其他 NPC（px 降序）
   const playerInviteSet = new Set(playerInviters);
   const pairs: Array<[string, string]> = [];
-  for (const inviter of [
-    ...inviters,
-    ...(playerInviters.length === 2 && wantsPlayer.length === 1
-      ? playerInviters.filter((p) => !inviters.includes(p))
-      : []),
-  ]) {
+  const emitters = [...new Set([...playerInviters, ...inviters])].slice(0, 2);
+  for (const inviter of emitters) {
     if (playerInviteSet.has(inviter)) {
       pairs.push([inviter, "player"]);
     } else {

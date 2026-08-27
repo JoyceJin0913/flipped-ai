@@ -37,9 +37,9 @@ export function rateLimit(request: Request, limit = 20): Response | null {
 }
 
 export async function callDoubao(messages: DoubaoMessage[]) {
-  const apiKey = process.env.ARK_API_KEY;
-  const model = process.env.ARK_ENDPOINT_ID ?? process.env.ARK_MODEL;
-  const baseUrl = process.env.ARK_BASE_URL ?? "https://ark.cn-beijing.volces.com/api/v3";
+  const apiKey = process.env["ARK_API_KEY"];
+  const model = process.env["ARK_ENDPOINT_ID"] ?? process.env["ARK_MODEL"];
+  const baseUrl = process.env["ARK_BASE_URL"] ?? "https://ark.cn-beijing.volces.com/api/v3";
 
   if (!apiKey || !model) {
     throw new Error("豆包尚未配置：缺少 ARK_API_KEY 或 ARK_ENDPOINT_ID");

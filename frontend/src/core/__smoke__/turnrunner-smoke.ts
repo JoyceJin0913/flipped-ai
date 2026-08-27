@@ -385,6 +385,20 @@ async function main(): Promise<void> {
         throw new Error("0 份时不应有接受选项");
       }
     });
+    check("day4 分支择一（1 份）", () => {
+      const r = m.buildOptions(
+        d4 as DecisionEventSpec,
+        makeCtx({
+          facts: { day4_invite_count: "1", day4_inviter_a: "guyan" },
+          rel: baseRel,
+        }),
+      );
+      if (r.branchId !== "one_invite") throw new Error(`branch=${r.branchId}`);
+      const ids = r.options.map((option) => option.option.id);
+      if (!ids.includes("a_accept_only_inviter") || !ids.includes("c_decline_only_inviter")) {
+        throw new Error(`单邀请选项缺失: ${ids.join(",")}`);
+      }
+    });
     check("day5 变体 fact 隐藏 + 信任额度灰显", () => {
       const r = m.buildOptions(
         d5 as DecisionEventSpec,
@@ -884,30 +898,32 @@ async function main(): Promise<void> {
       const r2 = m.runEngineHook("d3_generate_question_level", ctx2);
       if (r2.factWrites.length !== 0) throw new Error("d3 应幂等");
     });
-    check("d4_generate_invites：恰 1 位想邀请玩家 → 追加 → count=2", () => {
+    check("d4_generate_invites：恰 1 位想邀请玩家 → 保留 count=1", () => {
       const ctx = makeCtx({
         rel: {
           guyan: [50, 60],
-          xiaohai: [45, 60],
-          luze: [30, 60],
-          anran: [30, 60],
-          chengyi: [30, 60],
-          linxia: [30, 60],
-          zhoumu: [30, 60],
-          ningwan: [30, 60],
-          xiazhi: [30, 60],
+          xiaohai: [45, 30],
+          luze: [30, 30],
+          anran: [30, 30],
+          chengyi: [30, 30],
+          linxia: [30, 30],
+          zhoumu: [30, 30],
+          ningwan: [30, 30],
+          xiazhi: [30, 30],
         },
         day: 4,
       });
       const r = m.runEngineHook("d4_generate_invites", ctx);
       const w = writeMap(r);
-      if (w["day4_invite_count"] !== "2") throw new Error(`count=${w["day4_invite_count"]}`);
-      // 想邀请玩家的 = guyan（60≥55 ∧ 50≥40）；xiaohai px45<40 不算 → 触发追加
+      if (w["day4_invite_count"] !== "1") throw new Error(`count=${w["day4_invite_count"]}`);
+      // 想邀请玩家的只有 guyan；不得为填剧情名额追加不合格 NPC。
       const invited = (w["day4_invited_by"] ?? "").split(",");
-      if (invited.length !== 2 || !invited.includes("guyan")) {
+      if (invited.length !== 1 || invited[0] !== "guyan") {
         throw new Error(`invited=${w["day4_invited_by"]}`);
       }
-      if (!w["day4_inviter_a"] || !w["day4_inviter_b"]) throw new Error("缺 inviter_a/b");
+      if (!w["day4_inviter_a"] || w["day4_inviter_b"] !== undefined) {
+        throw new Error("单邀请分支只能写 inviter_a");
+      }
       // 幂等
       const ctx2: Ctx = { ...ctx, worldFacts: merge(ctx.worldFacts, r.factWrites, ctx.day) };
       const r2 = m.runEngineHook("d4_generate_invites", ctx2);

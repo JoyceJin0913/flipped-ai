@@ -53,7 +53,7 @@ export async function postChat(input: {
   member: { id?: string; name: string; where: string; gender: string };
   history: Array<{ from: "me" | "ta"; text: string }>;
   userMessage: string;
-  context?: { day?: number; playerName?: string; heartValue?: number };
+  context?: { day?: number; playerName?: string; npcContext?: string };
 }): Promise<{ reply: string }> {
   const res = await fetch("/api/chat", {
     method: "POST",
