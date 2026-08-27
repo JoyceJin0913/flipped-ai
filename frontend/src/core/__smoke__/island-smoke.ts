@@ -359,13 +359,14 @@ function testEndings(): void {
 // ------------------------------------------------------------
 
 async function testStore(): Promise<void> {
-  const { useIslandStore } = await import("../../stores/useIslandStore");
+  const { useIslandStore, migrateIslandPersistedState } =
+    await import("../../stores/useIslandStore");
   const { useGameStore } = await import("../../stores/useOnboardingStore");
 
   console.log("== Part C：persist 配置 ==");
   const persistApi = useIslandStore.persist.getOptions();
   assert(persistApi.name === "flipped-ai-island", "persist key 应为 flipped-ai-island");
-  assert(persistApi.version === 1, "persist version 应为 1");
+  assert(persistApi.version === 2, "persist version 应为 2");
   console.log(`  persist key=${persistApi.name} version=${persistApi.version}`);
   console.log(
     "  说明：浏览器端由 zustand persist 自动恢复 localStorage（key flipped-ai-island）；" +
@@ -403,6 +404,16 @@ async function testStore(): Promise<void> {
     npcIds.every((id) => s.relationships[id]?.toNpc === 30 && s.relationships[id]?.fromNpc === 30),
     "初始关系应全员 30/30",
   );
+  assert(
+    npcIds.every(
+      (id) =>
+        s.npcStateCards[id]?.interest.playerToNpc === 30 &&
+        s.npcStateCards[id]?.interest.npcToPlayer === 30 &&
+        s.npcStateCards[id]?.trust === 30 &&
+        s.npcStateCards[id]?.tension === 0,
+    ),
+    "v2 状态卡应按 NPC 初始化",
+  );
   assert(s.day === 1 && s.eventIndex === 0, "初始 day=1 / eventIndex=0");
   assert(s.phase === "day_loop" && s.ending === null && s.seq === 0, "初始 phase/ending/seq 正确");
   assert(
@@ -427,6 +438,11 @@ async function testStore(): Promise<void> {
   s = useIslandStore.getState();
   assert(s.eventLog.length === 1, "名单一致时重复 init 不应重置 eventLog");
   assert(s.relationships["guyan"]?.toNpc === 40, "名单一致时重复 init 不应重置好感");
+  assert(
+    s.npcStateCards["guyan"]?.interest.playerToNpc === 40 &&
+      s.npcStateCards["guyan"]?.interactionCount === 1,
+    "事件 delta 应通过 signal 同步权威状态卡",
+  );
   console.log("  B2 名单交接 + 幂等（重复 init 不重建）：通过");
 
   // ---- B3 applyResolvedOption：好感钳位 / 资源钳位 / 事实 / 回放 ----
@@ -450,6 +466,10 @@ async function testStore(): Promise<void> {
   assert(s.relationships["guyan"]?.toNpc === 100, "好感上钳位：应顶到 100");
   assert(s.relationships["xiaohai"]?.fromNpc === 0, "好感下钳位：应压到 0");
   assert(s.relationships["linxia"]?.toNpc === 40, "competitor 好感也应生效");
+  assert(
+    s.npcStateCards["guyan"]?.interest.playerToNpc === s.relationships["guyan"]?.toNpc,
+    "relationships 应与状态卡投影一致",
+  );
   assert(s.resources.exemption === 0, "资源扣减钳位 ≥0：exemption 应为 0");
   assert(s.worldFacts["day1_first_speaker"]?.value === "guyan", "facts 应写入 worldFacts");
   assert(s.eventLog.length === 2, "eventLog 应追加到 2 条");
@@ -466,6 +486,94 @@ async function testStore(): Promise<void> {
     "回放条目字段应完整",
   );
   console.log("  B3 好感/资源钳位 + 事实写入 + 回放：通过");
+
+  // ---- B3.5 私聊统一写入：固定映射 / 记忆 / 幂等 / 非法拒绝 ----
+  const privateSignal = {
+    id: "chat:session-1:qiaoyi:support",
+    source: "private_chat",
+    day: 1,
+    targetNpcId: "qiaoyi",
+    intent: "support",
+    valence: "positive",
+    strength: 1,
+    visibility: "private",
+    memory: { tag: "support", text: "玩家认真听我说完了心事", visibility: "private" },
+    provenance: { chatSessionId: "session-1" },
+  } as const;
+  const applied = useIslandStore.getState().applyInteractionSignal(privateSignal);
+  const afterPrivate = useIslandStore.getState();
+  assert(applied.status === "applied", "合法私聊信号应结算");
+  assert(
+    afterPrivate.npcStateCards["qiaoyi"]?.interest.npcToPlayer === 32 &&
+      afterPrivate.npcStateCards["qiaoyi"]?.trust === 32 &&
+      afterPrivate.npcStateCards["qiaoyi"]?.memories.length === 1,
+    "私聊应使用本地固定映射并写入记忆",
+  );
+  assert(
+    useIslandStore.getState().applyInteractionSignal(privateSignal).status === "duplicate" &&
+      useIslandStore.getState().npcStateCards["qiaoyi"]?.interactionCount === 1,
+    "重复 signal id 不应重复结算",
+  );
+  const beforeInvalid = useIslandStore.getState().npcStateCards;
+  const invalid = useIslandStore.getState().applyInteractionSignal({
+    ...privateSignal,
+    id: "chat:invalid",
+    targetNpcId: "not-on-island",
+  });
+  assert(
+    invalid.status === "invalid" && useIslandStore.getState().npcStateCards === beforeInvalid,
+    "非法目标不应留下部分状态",
+  );
+  const beforeInvalidBatch = useIslandStore.getState().npcStateCards;
+  const batchResults = useIslandStore.getState().applyInteractionSignals([
+    { ...privateSignal, id: "chat:batch-valid", provenance: { chatSessionId: "batch" } },
+    {
+      ...privateSignal,
+      id: "chat:batch-invalid",
+      targetNpcId: "not-on-island",
+      provenance: { chatSessionId: "batch" },
+    },
+  ]);
+  assert(
+    batchResults.every((result) => result.status === "invalid") &&
+      useIslandStore.getState().npcStateCards === beforeInvalidBatch,
+    "批量信号含非法项时应整批原子拒绝",
+  );
+  const directPublic = useIslandStore.getState().applyInteractionSignal({
+    ...privateSignal,
+    id: "event:forged",
+    source: "public_event",
+    visibility: "public",
+    relationshipDelta: { npcInterest: 100 },
+    memory: undefined,
+    provenance: { eventId: "forged", optionId: "forged" },
+  });
+  assert(directPublic.status === "invalid", "公共事件信号只能由事件结算入口创建");
+
+  const beforeAtomicEvent = useIslandStore.getState();
+  useIslandStore.getState().applyResolvedOption({
+    day: 1,
+    eventId: "invalid_aggregate",
+    kind: "decision",
+    optionId: "too_large",
+    optionText: "非法聚合变化",
+    risk: "dangerous",
+    targetNpcId: "guyan",
+    deltas: [
+      { npcId: "guyan", direction: "to_npc", delta: 80 },
+      { npcId: "guyan", direction: "to_npc", delta: 80 },
+    ],
+    factsWrites: [{ key: "invalid_aggregate_fact", value: "must_not_exist" }],
+    resourceCosts: [{ resource: "exemption", amount: 1 }],
+  });
+  const afterAtomicEvent = useIslandStore.getState();
+  assert(
+    afterAtomicEvent.seq === beforeAtomicEvent.seq &&
+      afterAtomicEvent.worldFacts["invalid_aggregate_fact"] === undefined &&
+      afterAtomicEvent.npcStateCards === beforeAtomicEvent.npcStateCards,
+    "非法公共事件信号必须连同事实、资源和回放一起原子回滚",
+  );
+  console.log("  B3.5 私聊统一写入 + 幂等 + 非法拒绝：通过");
 
   // ---- B4 advanceEvent 钳位 ≤2 ----
   useIslandStore.getState().advanceEvent(); // 1
@@ -672,6 +780,10 @@ async function testStore(): Promise<void> {
   assert(s.eventLog.length === 3, "结算后 hook 写入：eventLog 不应追加重复条目");
   assert(s.relationships["xiazhi"]?.fromNpc === 18, "结算后 hook 写入：好感 Δ 应照常应用（30-12）");
   assert(s.worldFacts["day6_rejected_by"]?.value === "xiazhi", "结算后 hook 写入：facts 应落库");
+  assert(
+    s.npcStateCards["xiazhi"]?.memories.some((memory) => memory.tag === "rejection") === true,
+    "Day6 被拒应形成 rejection 记忆供 hurtNpc/unfinished 使用",
+  );
   console.log("  B7.7 真实结算后 afterHooks 写入放行（合并状态、不追加 log）：通过");
 
   // ---- B8 resetRun：回到初始（保留名单）----
@@ -693,6 +805,11 @@ async function testStore(): Promise<void> {
     "resetRun 应保留 npcIds 并重建 30/30",
   );
   assert(
+    s.appliedSignalIds.length === 0 &&
+      s.npcIds.every((id) => s.npcStateCards[id]?.interactionCount === 0),
+    "resetRun 应清空信号幂等集并重建状态卡",
+  );
+  assert(
     Object.values(s.resources).every((v) => v === 0),
     "resetRun 应清零资源",
   );
@@ -705,10 +822,39 @@ async function testStore(): Promise<void> {
   );
   const persistedRaw = memStorage.get("flipped-ai-island");
   assert(
-    persistedRaw !== undefined && persistedRaw.includes('"version":1'),
-    "持久化内容应含 version:1",
+    persistedRaw !== undefined && persistedRaw.includes('"version":2'),
+    "持久化内容应含 version:2",
   );
-  console.log("  B9 persist 写入（key + version:1）：通过");
+  console.log("  B9 persist 写入（key + version:2）：通过");
+
+  // ---- B10 v1 → v2 纯迁移 ----
+  const legacy = {
+    npcIds: ["guyan", "xiaohai"],
+    relationships: { guyan: { toNpc: 77, fromNpc: 66 } },
+    eventLog: [
+      { deltas: [{ npcId: "guyan", direction: "to_npc", delta: 2 }] },
+      { deltas: [{ npcId: "guyan", direction: "from_npc", delta: 0 }] },
+    ],
+    day: 4,
+  };
+  const migrated = migrateIslandPersistedState(legacy, 1) as typeof legacy & {
+    npcStateCards: typeof s.npcStateCards;
+    appliedSignalIds: string[];
+  };
+  assert(migrated.day === 4, "v1 迁移应保留日期等原状态");
+  assert(
+    migrated.npcStateCards["guyan"]?.interest.playerToNpc === 77 &&
+      migrated.npcStateCards["guyan"]?.interest.npcToPlayer === 66 &&
+      migrated.npcStateCards["guyan"]?.interactionCount === 1,
+    "v1 好感与非零 delta 计数应迁移",
+  );
+  assert(
+    migrated.npcStateCards["xiaohai"]?.interest.playerToNpc === 30 &&
+      migrated.appliedSignalIds.length === 0,
+    "v1 缺失 NPC 关系应单独回退默认值",
+  );
+  assert(JSON.stringify(legacy).includes("npcStateCards") === false, "migration 不应修改 v1 输入");
+  console.log("  B10 v1→v2 纯迁移：通过");
 
   console.log(`Part B/C 断言全部通过（累计 ${assertionCount} 条）`);
   console.log("");
