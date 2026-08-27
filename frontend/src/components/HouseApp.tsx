@@ -13,7 +13,7 @@ import {
   meAvatar,
   profile,
   storyTimeline,
-  chatTopics,
+  chatTopics as fallbackChatTopics,
   replyOf,
   journey,
   type Scene,
@@ -28,6 +28,8 @@ import { getDaySceneImage } from "@/data/daySceneImages";
 import { useIslandStore } from "@/stores/useIslandStore";
 import { useGameStore } from "@/stores/useOnboardingStore";
 import { getHeartSignal, type HeartSignal } from "@/core/heartSignal";
+import { getNpcOutputContext } from "@/core/outputContext";
+import { getChatTopics, type StatefulChatTopic } from "@/data/chatTopics";
 import { getNpcById } from "@/onboarding/npcLibrary";
 import { useHouseState } from "@/hooks/useHouseState";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
@@ -592,19 +594,21 @@ function HomeView({
 }) {
   const hero = scenes[1]!;
   const day = useIslandStore((s) => s.day);
+  const appliedSignalIds = useIslandStore((s) => s.appliedSignalIds);
   const islandNpcs = useGameStore((s) => s.islandNpcs);
   const competitors = useGameStore((s) => s.competitors);
   const playerProfile = useGameStore((s) => s.playerProfile);
   const todayEvents = getDay(day)?.events ?? [];
   const chatSummaries = summarizeChatsByMember(chatLog);
   const [who, setWho] = useState<Member | null>(null);
-  const [chatWith, setChatWith] = useState<Member | null>(null);
+  const [chatWith, setChatWith] = useState<{ member: Member; sessionId: string } | null>(null);
   const onboardingRoster = [...islandNpcs, ...competitors];
   const hasOnboardingRoster = onboardingRoster.length > 0;
   const houseMembers: Member[] = hasOnboardingRoster
     ? onboardingRoster.map((storedNpc, index) => {
         const npc = getNpcById(storedNpc.id) ?? storedNpc;
         return {
+          id: npc.id,
           name: npc.name,
           gender: npc.gender === "male" ? "m" : "f",
           where: `在${ROOMS[index % ROOMS.length]}`,
@@ -836,12 +840,19 @@ function HomeView({
           member={who}
           onClose={() => setWho(null)}
           onOpen={onOpen}
-          onChat={() => setChatWith(who)}
+          onChat={() => {
+            const npcKey = who.id ?? who.name;
+            const prefix = `private-chat:d${day}:${npcKey}:`;
+            const nextSession =
+              appliedSignalIds.filter((signalId) => signalId.startsWith(prefix)).length + 1;
+            setChatWith({ member: who, sessionId: `${prefix}s${nextSession}` });
+          }}
         />
       )}
       {chatWith && (
         <ChatSheet
-          member={chatWith}
+          member={chatWith.member}
+          chatSessionId={chatWith.sessionId}
           onLog={onLog}
           onClose={() => {
             setChatWith(null);
@@ -947,13 +958,20 @@ type ChatMsg = { from: "me" | "ta"; text: string };
 
 function ChatSheet({
   member,
+  chatSessionId,
   onClose,
   onLog,
 }: {
   member: Member;
+  chatSessionId: string;
   onClose: () => void;
   onLog: (e: ChatLogEntry) => void;
 }) {
+  const day = useIslandStore((state) => state.day);
+  const npcStateCards = useIslandStore((state) => state.npcStateCards);
+  const worldFacts = useIslandStore((state) => state.worldFacts);
+  const applyInteractionSignal = useIslandStore((state) => state.applyInteractionSignal);
+  const playerName = useGameStore((state) => state.playerProfile?.name);
   const tone = member.gender === "m" ? "text-male" : "text-female";
   const [msgs, setMsgs] = useState<ChatMsg[]>([
     { from: "ta", text: `（${member.where}）嗯？你怎么过来了。` },
@@ -963,12 +981,32 @@ function ChatSheet({
   const [rounds, setRounds] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
   const maxRounds = 20;
+  const chatChoiceContext = member.id
+    ? getNpcOutputContext({ npcStateCards, worldFacts, day }, member.id, "chat_choices")
+    : null;
+  const chatContentContext = member.id
+    ? getNpcOutputContext({ npcStateCards, worldFacts, day }, member.id, "chat_content")
+    : null;
+  const recommendedTopics: StatefulChatTopic[] = chatChoiceContext
+    ? getChatTopics(chatChoiceContext)
+    : fallbackChatTopics.slice(0, 3).map((topic) => ({
+        ...topic,
+        intent: "chat",
+        valence: "neutral" as const,
+        strength: 1 as const,
+        memoryTag: "chat" as const,
+      }));
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
-  const send = async (text: string, label: string, fallbackReply: string) => {
+  const send = async (
+    text: string,
+    label: string,
+    fallbackReply: string,
+    signalMeta: Pick<StatefulChatTopic, "intent" | "valence" | "strength" | "memoryTag">,
+  ) => {
     const message = text.trim();
     if (sending || rounds >= maxRounds || !message) return;
 
@@ -978,15 +1016,51 @@ function ChatSheet({
     let reply = fallbackReply;
     try {
       const result = await postChat({
-        member: { name: member.name, where: member.where, gender: member.gender },
+        member: {
+          ...(member.id ? { id: member.id } : {}),
+          name: member.name,
+          where: member.where,
+          gender: member.gender,
+        },
         history: msgs,
         userMessage: message,
+        context: {
+          day,
+          ...(playerName ? { playerName } : {}),
+          ...(chatContentContext ? { npcContext: chatContentContext.llm.promptText } : {}),
+        },
       });
       reply = result.reply;
     } catch (error) {
       console.warn("[chat] 豆包不可用，使用固定回复", error);
     }
     setMsgs((m) => [...m, { from: "ta", text: reply }]);
+    if (member.id) {
+      const roundNumber = rounds + 1;
+      const memory =
+        rounds === 0
+          ? {
+              tag: signalMeta.memoryTag,
+              text: `玩家在私聊中和我聊到「${compactChatText(message, 72)}」`,
+              visibility: "private" as const,
+            }
+          : undefined;
+      const result = applyInteractionSignal({
+        id: `${chatSessionId}:r${roundNumber}`,
+        source: "private_chat",
+        day,
+        targetNpcId: member.id,
+        intent: signalMeta.intent,
+        valence: signalMeta.valence,
+        strength: signalMeta.strength,
+        visibility: "private",
+        ...(memory ? { memory } : {}),
+        provenance: { chatSessionId },
+      });
+      if (result.status === "invalid") {
+        console.warn("[chat] 私聊信号未写入", result.error);
+      }
+    }
     onLog({ name: member.name, label, say: message, reply });
     setRounds((value) => value + 1);
     setSending(false);
@@ -1068,10 +1142,17 @@ function ChatSheet({
             </p>
           ) : (
             <>
-              {chatTopics.map((topic) => (
+              {recommendedTopics.map((topic) => (
                 <button
                   key={topic.key}
-                  onClick={() => send(topic.say, topic.label, replyOf(topic, member.name))}
+                  onClick={() =>
+                    send(topic.say, topic.label, replyOf(topic, member.name), {
+                      intent: topic.intent,
+                      valence: topic.valence,
+                      strength: topic.strength,
+                      memoryTag: topic.memoryTag,
+                    })
+                  }
                   className="w-full rounded-full border border-border px-4 py-2.5 text-left text-xs transition-colors hover:bg-secondary/60"
                 >
                   {topic.label} · 「{topic.say}」
@@ -1082,7 +1163,12 @@ function ChatSheet({
                 className="flex items-center gap-2 pt-1"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void send(draft, "自由输入", "我听见了。只是这句话，我想再想一会儿。");
+                  void send(draft, "自由输入", "我听见了。只是这句话，我想再想一会儿。", {
+                    intent: "free_chat",
+                    valence: "neutral",
+                    strength: 1,
+                    memoryTag: "chat",
+                  });
                 }}
               >
                 <input

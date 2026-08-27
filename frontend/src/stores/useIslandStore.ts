@@ -6,7 +6,7 @@
  * → advanceEvent() / advanceDay()（D3/D5/D6/D7 进天发资源，§11）
  * → resolveEnding()（D7 篝火熄灭时锁定结局，§9.3）→ resetRun()（重开一局）。
  *
- * persist：key "flipped-ai-island"，version 1（浏览器端 localStorage 自动恢复）。
+ * persist：key "flipped-ai-island"，version 2（浏览器端 localStorage 自动恢复）。
  *
  * 依赖面刻意保持最小：zustand、core/{worldTypes,worldFacts,ending}、
  * data/events/types（只用 ResourceKey / DAY_RESOURCE_GRANTS）、useOnboardingStore。
@@ -19,6 +19,18 @@ import { persist } from "zustand/middleware";
 import type { WorldFacts } from "../core/worldTypes";
 import { createEmptyFacts, writeFacts, type WorldFactWrite } from "../core/worldFacts";
 import { resolveEndingDetail, type EndingId } from "../core/ending";
+import {
+  parseInteractionSignal,
+  type InteractionSignal,
+  type InteractionStrength,
+  type InteractionValence,
+} from "../core/interactionSignal";
+import {
+  applySignalToNpcState,
+  createNpcStateCard,
+  projectRelationships,
+  type NpcStateCard,
+} from "../core/npcState";
 import { DAY_RESOURCE_GRANTS, type ResourceKey } from "../data/events/types";
 import { useGameStore } from "./useOnboardingStore";
 
@@ -73,7 +85,12 @@ export interface ResolvedOptionResult {
   resourceCosts: { resource: ResourceKey; amount: number }[];
 }
 
-interface IslandState {
+export type ApplySignalResult =
+  | { status: "applied"; signalId: string }
+  | { status: "duplicate"; signalId: string }
+  | { status: "invalid"; signalId: string | null; error: string };
+
+export interface IslandState {
   phase: IslandPhase;
   /** 当前天数 1-7 */
   day: number;
@@ -81,7 +98,11 @@ interface IslandState {
   eventIndex: number;
   /** 岛上 NPC 名单（onboarding islandNpcs 5 + competitors 4） */
   npcIds: string[];
+  /** v2 权威关系数据；relationships 仅为旧消费端的同步投影。 */
+  npcStateCards: Record<string, NpcStateCard>;
   relationships: Record<string, IslandRelationship>;
+  /** 七日局内的轻量幂等集合。 */
+  appliedSignalIds: string[];
   worldFacts: WorldFacts;
   resources: Record<ResourceKey, number>;
   eventLog: IslandEventLogEntry[];
@@ -93,6 +114,8 @@ interface IslandState {
   initFromOnboarding: () => void;
   /** 把 turnRunner 结算结果应用到状态（好感/事实/资源/回放） */
   applyResolvedOption: (result: ResolvedOptionResult) => void;
+  applyInteractionSignal: (signal: unknown) => ApplySignalResult;
+  applyInteractionSignals: (signals: unknown[]) => ApplySignalResult[];
   /** 推进到当天下一个事件（钳位 ≤2） */
   advanceEvent: () => void;
   /** 进下一天：发资源；day=7 时不动（UI 负责切 finale） */
@@ -126,6 +149,235 @@ function freshRelationships(npcIds: string[]): Record<string, IslandRelationship
   return out;
 }
 
+function freshNpcStateCards(npcIds: string[]): Record<string, NpcStateCard> {
+  return Object.fromEntries(npcIds.map((npcId) => [npcId, createNpcStateCard(npcId)]));
+}
+
+function signalIdOf(input: unknown): string | null {
+  if (typeof input !== "object" || input === null || !("id" in input)) return null;
+  const id = (input as { id?: unknown }).id;
+  return typeof id === "string" && id.trim() ? id.trim() : null;
+}
+
+interface SignalStateSlice {
+  npcIds: string[];
+  npcStateCards: Record<string, NpcStateCard>;
+  appliedSignalIds: string[];
+}
+
+function reduceInteractionSignals(
+  state: SignalStateSlice,
+  inputs: readonly unknown[],
+): {
+  npcStateCards: Record<string, NpcStateCard>;
+  relationships: Record<string, IslandRelationship>;
+  appliedSignalIds: string[];
+  results: ApplySignalResult[];
+} {
+  const parsedInputs = inputs.map((input) => ({
+    input,
+    parsed: parseInteractionSignal(input, state.npcIds),
+  }));
+  const batchError = parsedInputs.find(({ parsed }) => !parsed.success);
+  if (batchError) {
+    return {
+      npcStateCards: state.npcStateCards,
+      relationships: projectRelationships(state.npcStateCards),
+      appliedSignalIds: state.appliedSignalIds,
+      results: parsedInputs.map(({ input, parsed }) => ({
+        status: "invalid" as const,
+        signalId: signalIdOf(input),
+        error: parsed.success ? "batch rejected because another signal is invalid" : parsed.error,
+      })),
+    };
+  }
+
+  const missingCard = parsedInputs.find(
+    ({ parsed }) => parsed.success && state.npcStateCards[parsed.signal.targetNpcId] === undefined,
+  );
+  if (missingCard) {
+    const missingNpcId = missingCard.parsed.success ? missingCard.parsed.signal.targetNpcId : "";
+    return {
+      npcStateCards: state.npcStateCards,
+      relationships: projectRelationships(state.npcStateCards),
+      appliedSignalIds: state.appliedSignalIds,
+      results: parsedInputs.map(({ input }) => ({
+        status: "invalid" as const,
+        signalId: signalIdOf(input),
+        error: `batch rejected because state card is missing: ${missingNpcId}`,
+      })),
+    };
+  }
+
+  let cards = state.npcStateCards;
+  const appliedIds = new Set(state.appliedSignalIds);
+  const results: ApplySignalResult[] = [];
+
+  parsedInputs.forEach(({ parsed }, index) => {
+    if (!parsed.success) return;
+    const { signal } = parsed;
+    if (appliedIds.has(signal.id)) {
+      results.push({ status: "duplicate", signalId: signal.id });
+      return;
+    }
+    const current = cards[signal.targetNpcId]!;
+    cards = {
+      ...cards,
+      [signal.targetNpcId]: applySignalToNpcState(current, signal, Date.now() + index),
+    };
+    appliedIds.add(signal.id);
+    results.push({ status: "applied", signalId: signal.id });
+  });
+
+  return {
+    npcStateCards: cards,
+    relationships: projectRelationships(cards),
+    appliedSignalIds: [...appliedIds],
+    results,
+  };
+}
+
+function strengthForDeltas(values: readonly number[]): InteractionStrength {
+  const magnitude = Math.max(0, ...values.map((value) => Math.abs(value)));
+  if (magnitude === 0) return 0;
+  if (magnitude <= 3) return 1;
+  if (magnitude <= 8) return 2;
+  return 3;
+}
+
+function valenceForDeltas(values: readonly number[]): InteractionValence {
+  const hasPositive = values.some((value) => value > 0);
+  const hasNegative = values.some((value) => value < 0);
+  if (hasPositive && hasNegative) return "mixed";
+  if (hasPositive) return "positive";
+  if (hasNegative) return "negative";
+  return "neutral";
+}
+
+/** 把旧事件 delta 按 NPC 合并，一次事件互动只计数一次。 */
+function signalsFromResolvedOption(
+  result: ResolvedOptionResult,
+  npcIds: readonly string[],
+): InteractionSignal[] {
+  const grouped = new Map<string, { playerInterest: number; npcInterest: number }>();
+  for (const delta of result.deltas ?? []) {
+    if (!npcIds.includes(delta.npcId) || !Number.isFinite(delta.delta)) continue;
+    const current = grouped.get(delta.npcId) ?? { playerInterest: 0, npcInterest: 0 };
+    if (delta.direction === "to_npc") current.playerInterest += Math.round(delta.delta);
+    else current.npcInterest += Math.round(delta.delta);
+    grouped.set(delta.npcId, current);
+  }
+
+  return [...grouped.entries()].map(([targetNpcId, delta]) => {
+    const values = [delta.playerInterest, delta.npcInterest];
+    const isHook = result.kind === "open" && result.optionId === "";
+    const valence = valenceForDeltas(values);
+    const strength = strengthForDeltas(values);
+    const trust = valence === "positive" ? strength : valence === "negative" ? -strength : 0;
+    const tension =
+      valence === "negative" ? strength : valence === "mixed" ? 1 : valence === "positive" ? -1 : 0;
+    const deltaKey = `${delta.playerInterest}:${delta.npcInterest}`;
+    return {
+      id: `event:${result.day}:${result.eventId}:${result.kind}:${result.optionId || "hook"}:${targetNpcId}:${deltaKey}`,
+      source: "public_event",
+      day: result.day,
+      targetNpcId,
+      intent: "event_effect",
+      valence,
+      strength,
+      visibility: "public",
+      relationshipDelta: {
+        ...(delta.playerInterest !== 0 ? { playerInterest: delta.playerInterest } : {}),
+        ...(delta.npcInterest !== 0 ? { npcInterest: delta.npcInterest } : {}),
+        ...(trust !== 0 ? { trust } : {}),
+        ...(tension !== 0 ? { tension } : {}),
+      },
+      ...((!isHook && result.optionText.trim()) ||
+      (isHook && result.eventId === "day6_declare" && valence === "negative")
+        ? {
+            memory: {
+              tag: isHook
+                ? ("rejection" as const)
+                : valence === "negative" || valence === "mixed"
+                  ? ("conflict" as const)
+                  : ("support" as const),
+              text: isHook
+                ? "玩家在公开表态中没有选择我"
+                : `玩家在「${result.optionText.trim().slice(0, 140)}」中与我互动`,
+              visibility: "public" as const,
+            },
+          }
+        : {}),
+      provenance: { eventId: result.eventId, optionId: result.optionId },
+    };
+  });
+}
+
+type PersistedV1 = Partial<
+  Omit<IslandState, keyof Pick<IslandState, "npcStateCards" | "appliedSignalIds">>
+> & {
+  npcIds?: unknown;
+  relationships?: unknown;
+  eventLog?: unknown;
+};
+
+/** Pure v1→v2 migration; malformed/missing NPC data falls back per NPC. */
+export function migrateIslandPersistedState(persisted: unknown, version: number): unknown {
+  if (version >= 2 || typeof persisted !== "object" || persisted === null) return persisted;
+  const old = persisted as PersistedV1;
+  const npcIds = Array.isArray(old.npcIds)
+    ? old.npcIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+    : [];
+  const oldRelationships =
+    typeof old.relationships === "object" && old.relationships !== null
+      ? (old.relationships as Record<string, unknown>)
+      : {};
+  const interactionCounts: Record<string, number> = Object.fromEntries(npcIds.map((id) => [id, 0]));
+  if (Array.isArray(old.eventLog)) {
+    for (const entry of old.eventLog) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const deltas = (entry as { deltas?: unknown }).deltas;
+      if (!Array.isArray(deltas)) continue;
+      const countedNpcIds = new Set<string>();
+      for (const delta of deltas) {
+        if (typeof delta !== "object" || delta === null) continue;
+        const { npcId, delta: amount } = delta as { npcId?: unknown; delta?: unknown };
+        if (
+          typeof npcId === "string" &&
+          typeof amount === "number" &&
+          amount !== 0 &&
+          npcId in interactionCounts &&
+          !countedNpcIds.has(npcId)
+        ) {
+          interactionCounts[npcId] = (interactionCounts[npcId] ?? 0) + 1;
+          countedNpcIds.add(npcId);
+        }
+      }
+    }
+  }
+  const npcStateCards = Object.fromEntries(
+    npcIds.map((npcId) => {
+      const candidate = oldRelationships[npcId];
+      const relationship =
+        typeof candidate === "object" &&
+        candidate !== null &&
+        typeof (candidate as { toNpc?: unknown }).toNpc === "number" &&
+        Number.isFinite((candidate as { toNpc: number }).toNpc) &&
+        typeof (candidate as { fromNpc?: unknown }).fromNpc === "number" &&
+        Number.isFinite((candidate as { fromNpc: number }).fromNpc)
+          ? (candidate as IslandRelationship)
+          : { toNpc: 30, fromNpc: 30 };
+      return [npcId, createNpcStateCard(npcId, relationship, interactionCounts[npcId] ?? 0)];
+    }),
+  );
+  return {
+    ...old,
+    npcStateCards,
+    relationships: projectRelationships(npcStateCards),
+    appliedSignalIds: [],
+  };
+}
+
 /** 资源初始值（全 0） */
 function emptyResources(): Record<ResourceKey, number> {
   return { exemption: 0, trust_points: 0, declaration: 0, solo_chance: 0 };
@@ -154,7 +406,9 @@ export const useIslandStore = create<IslandState>()(
       day: 1,
       eventIndex: 0,
       npcIds: [],
+      npcStateCards: {},
       relationships: {},
+      appliedSignalIds: [],
       worldFacts: createEmptyFacts(),
       resources: emptyResources(),
       eventLog: [],
@@ -169,7 +423,7 @@ export const useIslandStore = create<IslandState>()(
         set((state) => {
           const sameIds =
             ids.length === state.npcIds.length && ids.every((id) => state.npcIds.includes(id));
-          const initialized = ids.every((id) => state.relationships[id] !== undefined);
+          const initialized = ids.every((id) => state.npcStateCards[id] !== undefined);
           // 幂等：名单一致且已初始化 → 什么都不做
           if (sameIds && initialized) return {};
           // 名单变化（重开游戏换人）→ 整局重建
@@ -178,7 +432,9 @@ export const useIslandStore = create<IslandState>()(
             day: 1,
             eventIndex: 0,
             npcIds: ids,
+            npcStateCards: freshNpcStateCards(ids),
             relationships: freshRelationships(ids),
+            appliedSignalIds: [],
             worldFacts: createEmptyFacts(),
             resources: emptyResources(),
             eventLog: [],
@@ -215,16 +471,12 @@ export const useIslandStore = create<IslandState>()(
           const hookLogged = state.eventLog.some(sameEvent);
           const skipLogEntry = isHookWrite && hookLogged;
 
-          // 好感按方向应用并钳位 0-100
-          const relationships = { ...state.relationships };
-          for (const delta of result.deltas ?? []) {
-            const rel = relationships[delta.npcId];
-            if (!rel) continue; // 名单外 NPC 忽略
-            const current = delta.direction === "to_npc" ? rel.toNpc : rel.fromNpc;
-            const next = clampAffinity(current + delta.delta);
-            relationships[delta.npcId] =
-              delta.direction === "to_npc" ? { ...rel, toNpc: next } : { ...rel, fromNpc: next };
-          }
+          // 旧事件 delta 转成公共互动信号；状态卡是唯一权威写入。
+          const signalUpdate = reduceInteractionSignals(
+            state,
+            signalsFromResolvedOption(result, state.npcIds),
+          );
+          if (signalUpdate.results.some((item) => item.status === "invalid")) return state;
 
           // 资源扣减（钳位 ≥0）
           const resources = { ...state.resources };
@@ -257,13 +509,65 @@ export const useIslandStore = create<IslandState>()(
           };
 
           return {
-            relationships,
+            npcStateCards: signalUpdate.npcStateCards,
+            relationships: signalUpdate.relationships,
+            appliedSignalIds: signalUpdate.appliedSignalIds,
             resources,
             worldFacts,
             eventLog: skipLogEntry ? state.eventLog : [...state.eventLog, entry],
             seq: skipLogEntry ? state.seq : seq,
           };
         });
+      },
+
+      applyInteractionSignal: (signal) => {
+        let result: ApplySignalResult = {
+          status: "invalid",
+          signalId: signalIdOf(signal),
+          error: "signal was not processed",
+        };
+        if ((signal as { source?: unknown } | null)?.source === "public_event") {
+          return {
+            status: "invalid",
+            signalId: signalIdOf(signal),
+            error: "public_event signals may only be created by applyResolvedOption",
+          };
+        }
+        set((state) => {
+          const update = reduceInteractionSignals(state, [signal]);
+          result = update.results[0] ?? result;
+          return {
+            npcStateCards: update.npcStateCards,
+            relationships: update.relationships,
+            appliedSignalIds: update.appliedSignalIds,
+          };
+        });
+        return result;
+      },
+
+      applyInteractionSignals: (signals) => {
+        if (
+          signals.some(
+            (signal) => (signal as { source?: unknown } | null)?.source === "public_event",
+          )
+        ) {
+          return signals.map((signal) => ({
+            status: "invalid" as const,
+            signalId: signalIdOf(signal),
+            error: "batch rejected because public_event signals are internal",
+          }));
+        }
+        let results: ApplySignalResult[] = [];
+        set((state) => {
+          const update = reduceInteractionSignals(state, signals);
+          results = update.results;
+          return {
+            npcStateCards: update.npcStateCards,
+            relationships: update.relationships,
+            appliedSignalIds: update.appliedSignalIds,
+          };
+        });
+        return results;
       },
 
       advanceEvent: () => {
@@ -290,7 +594,7 @@ export const useIslandStore = create<IslandState>()(
       resolveEnding: () => {
         set((state) => {
           const detail = resolveEndingDetail({
-            relationships: state.relationships,
+            relationships: projectRelationships(state.npcStateCards),
             facts: state.worldFacts,
           });
           return { ending: detail.id, phase: "finale" };
@@ -302,7 +606,9 @@ export const useIslandStore = create<IslandState>()(
           phase: "day_loop",
           day: 1,
           eventIndex: 0,
+          npcStateCards: freshNpcStateCards(state.npcIds),
           relationships: freshRelationships(state.npcIds),
+          appliedSignalIds: [],
           worldFacts: createEmptyFacts(),
           resources: emptyResources(),
           eventLog: [],
@@ -312,14 +618,14 @@ export const useIslandStore = create<IslandState>()(
       },
 
       highestNpcId: () => {
-        const { npcIds, relationships } = get();
+        const { npcIds, npcStateCards } = get();
         let best: string | null = null;
         let bestValue = -Infinity;
         for (const npcId of npcIds) {
-          const rel = relationships[npcId];
-          if (!rel) continue;
-          if (rel.toNpc > bestValue) {
-            bestValue = rel.toNpc;
+          const card = npcStateCards[npcId];
+          if (!card) continue;
+          if (card.interest.playerToNpc > bestValue) {
+            bestValue = card.interest.playerToNpc;
             best = npcId;
           }
         }
@@ -327,15 +633,15 @@ export const useIslandStore = create<IslandState>()(
       },
 
       secondNpcId: () => {
-        const { npcIds, relationships } = get();
+        const { npcIds, npcStateCards } = get();
         let first: string | null = null;
         let firstValue = -Infinity;
         let second: string | null = null;
         let secondValue = -Infinity;
         for (const npcId of npcIds) {
-          const rel = relationships[npcId];
-          if (!rel) continue;
-          const value = rel.toNpc;
+          const card = npcStateCards[npcId];
+          if (!card) continue;
+          const value = card.interest.playerToNpc;
           if (value > firstValue) {
             second = first;
             secondValue = firstValue;
@@ -349,11 +655,17 @@ export const useIslandStore = create<IslandState>()(
         return second;
       },
 
-      getHeart: (npcId) => get().relationships[npcId] ?? null,
+      getHeart: (npcId) => {
+        const card = get().npcStateCards[npcId];
+        return card
+          ? { toNpc: card.interest.playerToNpc, fromNpc: card.interest.npcToPlayer }
+          : null;
+      },
     }),
     {
       name: "flipped-ai-island",
-      version: 1,
+      version: 2,
+      migrate: migrateIslandPersistedState,
     },
   ),
 );

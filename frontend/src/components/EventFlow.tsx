@@ -37,6 +37,7 @@ import type {
 } from "@/data/events/types";
 import { NPC_LIBRARY, getNpcById } from "@/onboarding/npcLibrary";
 import { postNarration } from "@/lib/api";
+import { getAllNpcOutputContexts, type OutputPurpose } from "@/core/outputContext";
 import {
   buildOptions,
   dynamicAffinityMin,
@@ -188,6 +189,15 @@ function NpcText({ text, size = "sm" }: { text: string; size?: "sm" | "md" }) {
 // ============================================================
 
 function makeCtx(st: ReturnType<typeof useIslandStore.getState>): EngineContext {
+  const outputState = {
+    npcStateCards: st.npcStateCards,
+    worldFacts: st.worldFacts,
+    day: st.day,
+  };
+  const contextMap = (purpose: OutputPurpose) =>
+    Object.fromEntries(
+      getAllNpcOutputContexts(outputState, purpose).map((context) => [context.npcId, context]),
+    );
   return {
     npcIds: st.npcIds,
     relationships: st.relationships,
@@ -196,6 +206,10 @@ function makeCtx(st: ReturnType<typeof useIslandStore.getState>): EngineContext 
     day: st.day,
     eventIndex: st.eventIndex,
     eventLog: st.eventLog,
+    outputContexts: {
+      eventCast: contextMap("event_cast"),
+      eventChoices: contextMap("event_choices"),
+    },
     random: Math.random,
   };
 }
@@ -257,11 +271,15 @@ export function EventFlow({
   const [pickerError, setPickerError] = useState<string | null>(null);
   const skippedRef = useRef<string | null>(null);
 
-  const ctx = useMemo(() => makeCtx(state), [state]);
+  const liveCtx = useMemo(() => makeCtx(state), [state]);
+  const eventKey = `${day}:${eventIndex}:${event?.id ?? "missing"}`;
+  const lockedCtxRef = useRef<{ key: string; ctx: EngineContext } | null>(null);
+  const ctx = lockedCtxRef.current?.key === eventKey ? lockedCtxRef.current.ctx : liveCtx;
 
   // ---- 事件进入：钩子 + 跳过判定 ----
   useEffect(() => {
     if (phase !== "day_loop" || !daySpec || !event) return;
+    lockedCtxRef.current = null;
     const st = useIslandStore.getState();
 
     const runInto = (hooks: readonly string[] | undefined): EngineResult[] => {
@@ -290,6 +308,9 @@ export function EventFlow({
     // ---- 跳过判定（用钩子写入后的最新状态） ----
     const st2 = useIslandStore.getState();
     const c2 = makeCtx(st2);
+    // Event roles and choice inputs are a session snapshot: settlement must not
+    // make the cast drift while the same event is still on screen.
+    lockedCtxRef.current = { key: `${st2.day}:${st2.eventIndex}:${event.id}`, ctx: c2 };
     const skipped = event.when ? !evaluateRequire(event.when, c2).pass : false;
     if (skipped) {
       const key = `${st2.day}:${st2.eventIndex}`;
