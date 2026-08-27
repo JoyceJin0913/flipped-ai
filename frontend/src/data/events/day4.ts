@@ -10,8 +10,7 @@
  *    day4_inviter_b）；本事件脚本含 {day4_inviter_a/b} speaker 台词，需引擎
  *    在渲染前先行结算该钩子（否则 speaker 缺席整行跳过，与 day2_group_tension
  *    同通道）。
- * 2. day4_respond_invite 分支条件：day4_invite_count="2"（文档 ≥2；引擎保证
- *    只有 0 或 2+）与 "0"，命中分支时另一组选项不渲染。
+ * 2. day4_respond_invite 分支条件支持 0 / 1 / 2 份邀请，不强行补齐名额。
  * 3. 选项 facts 的 value 中 {邀请者A}/{邀请者B} 由引擎解析为对应邀请者 id；
  *    day4_declined_by_player 为逗号分隔列表；day4_soft_reject 为独立 key。
  * 4. 6.2 分支 A 的 D 槽 {target} = 被拒绝者，不用选择器：引擎按
@@ -51,7 +50,7 @@ const inviteRound: OpenEventSpec = {
   ],
 };
 
-/** 6.2 回应邀请（决策）· high · 有 D 槽 · 0 份 / 2+ 份双分支 */
+/** 6.2 回应邀请（决策）· high · 有 D 槽 · 0 / 1 / 2 份邀请 */
 const respondInvite: DecisionEventSpec = {
   kind: "decision",
   id: "day4_respond_invite",
@@ -61,13 +60,11 @@ const respondInvite: DecisionEventSpec = {
   timeLabel: "D4 上午",
   tension: "high",
   allowRiskSlot: true,
-  narration: [
-    "邀请已经发出。{邀请者A} 站在门口等你，{邀请者B} 也望着你——你的回答会同时改变两个人的处境。",
-  ],
+  narration: ["海边入口渐渐安静下来。有人结伴离开，也有人留下——现在轮到你回应。"],
   branches: [
     {
       id: "two_or_more_invites",
-      // 文档条件为 ≥2；引擎保证只可能为 0 或 2+（§6.1 规则 3）
+      // 当前一局最多两份邀请。
       when: { kind: "fact", key: "day4_invite_count", value: "2" },
       options: [
         {
@@ -170,6 +167,66 @@ const respondInvite: DecisionEventSpec = {
             },
           ],
           facts: [{ key: "day4_called_back", value: "{target}" }],
+        },
+      ],
+    },
+    {
+      id: "one_invite",
+      when: { kind: "fact", key: "day4_invite_count", value: "1" },
+      options: [
+        {
+          id: "a_accept_only_inviter",
+          slot: "A",
+          intent: "confess",
+          risk: "subtle",
+          text: "答应{邀请者A}",
+          effects: [
+            {
+              npc: { kind: "fact", key: "day4_inviter_a" },
+              delta: 8,
+              note: "接受唯一邀请",
+            },
+          ],
+          facts: [
+            { key: "day4_accepted_npc", value: "{邀请者A}" },
+            { key: "day4_went_date", value: "true" },
+          ],
+        },
+        {
+          id: "b_ask_before_accepting",
+          slot: "B",
+          intent: "expose_self",
+          risk: "subtle",
+          text: "先问{邀请者A}为什么会选择你",
+          effects: [
+            {
+              npc: { kind: "fact", key: "day4_inviter_a" },
+              delta: 4,
+              note: "确认邀请动机",
+            },
+          ],
+          facts: [
+            { key: "day4_accepted_npc", value: "{邀请者A}" },
+            { key: "day4_went_date", value: "true" },
+          ],
+        },
+        {
+          id: "c_decline_only_inviter",
+          slot: "C",
+          intent: "withdraw",
+          risk: "dangerous",
+          text: "婉拒{邀请者A}，选择留下",
+          effects: [
+            {
+              npc: { kind: "fact", key: "day4_inviter_a" },
+              delta: -5,
+              note: "唯一邀请被拒绝",
+            },
+          ],
+          facts: [
+            { key: "day4_went_date", value: "false" },
+            { key: "day4_declined_by_player", value: "{邀请者A}" },
+          ],
         },
       ],
     },

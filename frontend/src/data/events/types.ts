@@ -156,6 +156,18 @@ export type CustomCondId =
 /** 选项条件 / 事件跳过条件 */
 export type OptionRequire =
   | { kind: "affinity"; npc: NpcRef; min: number; direction?: "player_to_npc" } // 默认玩家→NPC
+  | {
+      kind: "relationship_metric";
+      npc: NpcRef;
+      metric: "player_interest" | "npc_interest" | "trust" | "tension" | "intimacy";
+      min?: number;
+      max?: number;
+    }
+  | {
+      kind: "memory_tag";
+      npc: NpcRef;
+      tag: "chat" | "support" | "promise" | "date" | "conflict" | "rejection" | "secret";
+    }
   | { kind: "attachment_is"; npc: NpcRef; attachment: AttachmentType }
   | { kind: "resource"; resource: ResourceKey; min: number }
   | { kind: "fact"; key: string; value?: string } // 存在（给 value 则须相等）
