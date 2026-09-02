@@ -36,10 +36,18 @@ export function rateLimit(request: Request, limit = 20): Response | null {
   return null;
 }
 
-export async function callDoubao(messages: DoubaoMessage[]) {
+export type DoubaoCallOptions = {
+  /** 本次调用的输出 token 上限，默认 220（沿用历史值；动态选项链路按需放宽）。 */
+  maxTokens?: number;
+  /** 采样温度，默认 0.85（沿用历史值）。 */
+  temperature?: number;
+};
+
+export async function callDoubao(messages: DoubaoMessage[], options: DoubaoCallOptions = {}) {
   const apiKey = process.env["ARK_API_KEY"];
   const model = process.env["ARK_ENDPOINT_ID"] ?? process.env["ARK_MODEL"];
   const baseUrl = process.env["ARK_BASE_URL"] ?? "https://ark.cn-beijing.volces.com/api/v3";
+  const { maxTokens = 220, temperature = 0.85 } = options;
 
   if (!apiKey || !model) {
     throw new Error("豆包尚未配置：缺少 ARK_API_KEY 或 ARK_ENDPOINT_ID");
@@ -54,8 +62,8 @@ export async function callDoubao(messages: DoubaoMessage[]) {
     body: JSON.stringify({
       model,
       messages,
-      temperature: 0.85,
-      max_tokens: 220,
+      temperature,
+      max_tokens: maxTokens,
       thinking: { type: "disabled" },
     }),
     signal: AbortSignal.timeout(12_000),
