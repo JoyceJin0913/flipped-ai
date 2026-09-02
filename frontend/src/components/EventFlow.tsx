@@ -35,7 +35,7 @@ import type {
   SlotId,
   TensionLevel,
 } from "@/data/events/types";
-import { getNpcById } from "@/onboarding/npcLibrary";
+import { NPC_LIBRARY, getNpcById } from "@/onboarding/npcLibrary";
 import { postNarration } from "@/lib/api";
 import { getAllNpcOutputContexts, type OutputPurpose } from "@/core/outputContext";
 import {
@@ -104,6 +104,85 @@ const RISK_DOT: Record<RiskLevel, string> = {
 };
 
 type FlowStage = "hooks" | "narration" | "decision" | "open" | "settled" | "skipped" | "dayEnd";
+
+// ============================================================
+// 文本中 NPC 名字高亮：扫描有头像的 NPC 名称，替换为头像+名字 chip
+// （用 longest-first 避免短名误伤长名）
+// ============================================================
+
+const NPC_WITH_AVATAR = NPC_LIBRARY.filter((n) => Boolean(n.avatar)).sort(
+  (a, b) => b.name.length - a.name.length,
+);
+
+function NpcText({ text, size = "sm" }: { text: string; size?: "sm" | "md" }) {
+  if (!text) return null;
+  const avSize = size === "md" ? "size-7" : "size-6";
+  const fontSize = size === "md" ? "text-[15px]" : "text-[14px]";
+  const out: React.ReactNode[] = [];
+  let i = 0;
+  let keyCounter = 0;
+  while (i < text.length) {
+    let matched: (typeof NPC_WITH_AVATAR)[number] | null = null;
+    for (const npc of NPC_WITH_AVATAR) {
+      if (text.startsWith(npc.name, i)) {
+        matched = npc;
+        break;
+      }
+    }
+    if (matched) {
+      out.push(
+        <span
+          key={`npc-${keyCounter++}`}
+          className="mx-0.5 inline-flex items-center gap-1.5 align-middle"
+        >
+          <span
+            className={`relative inline-block ${avSize} shrink-0 overflow-hidden rounded-full border bg-male/10 align-middle ${
+              matched.gender === "male" ? "border-male/40" : "border-female/40"
+            }`}
+          >
+            <span
+              className={`flex h-full w-full items-center justify-center text-[10px] font-semibold ${
+                matched.gender === "male" ? "text-male" : "text-female"
+              }`}
+            >
+              {matched.name.slice(0, 1)}
+            </span>
+            <img
+              src={matched.avatar}
+              alt={`${matched.name}头像`}
+              className="absolute inset-0 h-full w-full object-cover"
+              style={{ objectPosition: "50% 30%" }}
+              draggable={false}
+              onError={(event) => {
+                event.currentTarget.hidden = true;
+              }}
+            />
+          </span>
+          <span
+            className={`${fontSize} font-medium ${
+              matched.gender === "male" ? "text-male" : "text-female"
+            }`}
+          >
+            {matched.name}
+          </span>
+        </span>,
+      );
+      i += matched.name.length;
+    } else {
+      // 累积普通文本直到下一个 NPC 名字起点
+      let end = i + 1;
+      outer: while (end < text.length) {
+        for (const npc of NPC_WITH_AVATAR) {
+          if (text.startsWith(npc.name, end)) break outer;
+        }
+        end++;
+      }
+      out.push(text.slice(i, end));
+      i = end;
+    }
+  }
+  return <>{out}</>;
+}
 
 // ============================================================
 // 状态快照 → 引擎上下文
@@ -487,7 +566,7 @@ export function EventFlow({
               className="w-full rounded-3xl glass-card p-6 text-left animate-fade-in"
             >
               <p className="text-[15px] leading-7 text-foreground/90">
-                {fillText(event.narration[paraIndex] ?? "", ctx)}
+                <NpcText text={fillText(event.narration[paraIndex] ?? "", ctx)} size="md" />
               </p>
               <p className="mt-6 text-center text-xs tracking-widest text-muted-foreground">
                 点击继续
@@ -619,7 +698,7 @@ function DecisionView({
         <div className="mt-3 space-y-2">
           {contextLines.map((line, index) => (
             <p key={index} className="text-[15px] leading-7 text-foreground/90">
-              {line}
+              <NpcText text={line} size="md" />
             </p>
           ))}
         </div>
@@ -691,7 +770,7 @@ function DecisionOptionCard({
           silent ? "text-foreground/75" : "text-foreground"
         }`}
       >
-        {ro.text}
+        <NpcText text={ro.text} size="md" />
       </p>
       {!ro.enabled && ro.lockLabel && (
         <p className="mt-2 text-xs text-muted-foreground">{ro.lockLabel}</p>
@@ -724,7 +803,7 @@ function DecisionOutcomeView({
         <div className="mt-3 space-y-2">
           {contextLines.map((line, index) => (
             <p key={index} className="text-[15px] leading-7 text-foreground/90">
-              {line}
+              <NpcText text={line} size="md" />
             </p>
           ))}
         </div>
@@ -740,7 +819,9 @@ function DecisionOutcomeView({
 
       <div className="mt-4 rounded-3xl glass-card p-5">
         <p className="text-xs tracking-[0.24em] text-accent">剧情走向</p>
-        <p className="mt-3 text-[15px] leading-7 text-foreground/90">{text}</p>
+        <p className="mt-3 text-[15px] leading-7 text-foreground/90">
+          <NpcText text={text} size="md" />
+        </p>
         {loading ? (
           <div
             role="status"
@@ -831,13 +912,45 @@ function OpenView({
         {visible.map((l) =>
           l.who ? (
             <div key={l.key} className="animate-fade-in">
-              <p
-                className={`text-xs font-medium ${
-                  l.whoId && getNpcById(l.whoId)?.gender === "male" ? "text-male" : "text-female"
-                }`}
-              >
-                {l.who}
-              </p>
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const npc = l.whoId ? getNpcById(l.whoId) : undefined;
+                  return (
+                    <div
+                      className={`relative size-11 shrink-0 overflow-hidden rounded-xl border bg-male/10 ${
+                        npc?.gender === "male" ? "border-male/40" : "border-female/40"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-full w-full items-center justify-center text-base font-semibold ${
+                          npc?.gender === "male" ? "text-male" : "text-female"
+                        }`}
+                      >
+                        {(l.who ?? "?").slice(0, 1)}
+                      </span>
+                      {npc?.avatar && (
+                        <img
+                          src={npc.avatar}
+                          alt={`${l.who}头像`}
+                          className="absolute inset-0 h-full w-full object-cover"
+                          style={{ objectPosition: "50% 30%" }}
+                          draggable={false}
+                          onError={(event) => {
+                            event.currentTarget.hidden = true;
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })()}
+                <p
+                  className={`text-xs font-medium ${
+                    l.whoId && getNpcById(l.whoId)?.gender === "male" ? "text-male" : "text-female"
+                  }`}
+                >
+                  {l.who}
+                </p>
+              </div>
               <div className="mt-1 rounded-2xl glass-card p-4">
                 <p className="text-[15px] leading-7 text-foreground/90">{l.text}</p>
               </div>
@@ -847,7 +960,7 @@ function OpenView({
               key={l.key}
               className="animate-fade-in rounded-2xl glass-card p-4 text-[15px] leading-7 text-foreground/75 italic"
             >
-              {l.text}
+              <NpcText text={l.text} size="md" />
             </p>
           ),
         )}

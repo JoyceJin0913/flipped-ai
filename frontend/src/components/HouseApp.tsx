@@ -288,6 +288,13 @@ export function HouseApp() {
               onBack={() => setOpenScene(null)}
               onReplay={handleReplayDay}
               onReplayEvent={handleReplayEvent}
+              onAdvanceDay={() => {
+                useIslandStore.getState().advanceDay();
+                setEventDayDone(false);
+                setDayEndSeen(false);
+                setSingleEventIndex(null);
+              }}
+              day={island.day}
               canEnterRoom={island.phase === "day_loop" && eventDayDone && talkedCount >= 3}
               onEnterRoom={() => {
                 setOpenScene(null);
@@ -474,6 +481,8 @@ function HouseContent({
   onBack,
   onReplay,
   onReplayEvent,
+  onAdvanceDay,
+  day,
   canEnterRoom,
   onEnterRoom,
   onOpenFinale,
@@ -490,6 +499,8 @@ function HouseContent({
   onBack: () => void;
   onReplay: () => void;
   onReplayEvent: (index: number) => void;
+  onAdvanceDay?: () => void;
+  day: number;
   canEnterRoom: boolean;
   onEnterRoom: () => void;
   onOpenFinale: () => void;
@@ -536,6 +547,7 @@ function HouseContent({
       onOpen={onOpen}
       onReplay={onReplay}
       onReplayEvent={onReplayEvent}
+      onAdvanceDay={onAdvanceDay}
       canEnterRoom={canEnterRoom}
       onEnterRoom={onEnterRoom}
       onOpenFinale={onOpenFinale}
@@ -587,6 +599,7 @@ function HomeView({
   onOpen,
   onReplay,
   onReplayEvent,
+  onAdvanceDay,
   canEnterRoom,
   onEnterRoom,
   onOpenFinale,
@@ -596,6 +609,7 @@ function HomeView({
   onOpen: (s: Scene) => void;
   onReplay: () => void;
   onReplayEvent: (index: number) => void;
+  onAdvanceDay: (() => void) | undefined;
   canEnterRoom: boolean;
   onEnterRoom: () => void;
   onOpenFinale: () => void;
@@ -837,6 +851,14 @@ function HomeView({
         >
           重看今天的三件事
         </button>
+        {onAdvanceDay && day < 7 && (
+          <button
+            onClick={onAdvanceDay}
+            className="w-full rounded-full bg-romance py-3 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
+          >
+            进入下一天 →
+          </button>
+        )}
       </div>
 
       <p className="px-5 py-6 text-center text-[11px] text-muted-foreground">
