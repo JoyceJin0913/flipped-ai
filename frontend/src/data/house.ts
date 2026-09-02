@@ -53,7 +53,6 @@ export const microEvents: { time: string; text: string }[] = [
   { time: "22:05", text: "夏可在客厅放了首很老的歌，没人换台。" },
 ];
 
-
 export type Member = {
   id?: string;
   name: string;
@@ -214,14 +213,9 @@ export const scenes: Scene[] = [
 export const storySequence: string[] = ["living", "kitchen", "balcony"];
 
 /** 每段事件之后的过渡文字（最后一条是进入自由活动前的过渡） */
-export const storyTransitions: string[] = [
-  "半小时后……",
-  "夜色又深了一些……",
-  "小屋慢慢安静下来……",
-];
+export const storyTransitions: string[] = ["半小时后……", "夜色又深了一些……", "小屋慢慢安静下来……"];
 
 export const dateCard = {
-
   title: "明日约会 · 城南旧书店",
   time: "Day 05 · 15:00",
   desc: "五男五女，两人一组，60 分钟独处。名单会在今晚的核心选择之后揭晓。",
@@ -387,10 +381,28 @@ export const affinities: Affinity[] = [
     value: 72,
     status: "今天在厨房聊了 12 分钟",
     moments: [
-      { day: "Day 1", time: "20:10", place: "客厅", text: "自我介绍时，她说的爱好和你一样。", delta: 12 },
+      {
+        day: "Day 1",
+        time: "20:10",
+        place: "客厅",
+        text: "自我介绍时，她说的爱好和你一样。",
+        delta: 12,
+      },
       { day: "Day 2", time: "12:30", place: "餐桌", text: "她把最后一块蛋糕留给了你。", delta: 8 },
-      { day: "Day 3", time: "22:15", place: "阳台", text: "你们同时沉默了很久，谁都没走。", delta: 16 },
-      { day: "Day 4", time: "21:13", place: "厨房", text: "「等我想明白了，第一个告诉你。」", delta: 14 },
+      {
+        day: "Day 3",
+        time: "22:15",
+        place: "阳台",
+        text: "你们同时沉默了很久，谁都没走。",
+        delta: 16,
+      },
+      {
+        day: "Day 4",
+        time: "21:13",
+        place: "厨房",
+        text: "「等我想明白了，第一个告诉你。」",
+        delta: 14,
+      },
     ],
   },
   {
@@ -399,8 +411,20 @@ export const affinities: Affinity[] = [
     status: "晚餐时她一直在看你",
     moments: [
       { day: "Day 1", time: "21:40", place: "客厅", text: "她主动坐到了你旁边。", delta: 10 },
-      { day: "Day 3", time: "16:20", place: "院子", text: "她记得你说过怕晒，递了顶帽子。", delta: 12 },
-      { day: "Day 4", time: "18:47", place: "餐桌", text: "她偷偷看了你三次，被你发现一次。", delta: 9 },
+      {
+        day: "Day 3",
+        time: "16:20",
+        place: "院子",
+        text: "她记得你说过怕晒，递了顶帽子。",
+        delta: 12,
+      },
+      {
+        day: "Day 4",
+        time: "18:47",
+        place: "餐桌",
+        text: "她偷偷看了你三次，被你发现一次。",
+        delta: 9,
+      },
     ],
   },
   {
@@ -408,7 +432,13 @@ export const affinities: Affinity[] = [
     value: 34,
     status: "今天你们没有说话",
     moments: [
-      { day: "Day 2", time: "10:05", place: "厨房", text: "一起洗碗，聊了几句无关紧要的话。", delta: 6 },
+      {
+        day: "Day 2",
+        time: "10:05",
+        place: "厨房",
+        text: "一起洗碗，聊了几句无关紧要的话。",
+        delta: 6,
+      },
       { day: "Day 3", time: "19:50", place: "客厅", text: "她提议抽签，眼神却没看你。", delta: -4 },
     ],
   },
@@ -425,7 +455,13 @@ export const affinities: Affinity[] = [
     value: 18,
     status: "还没有真正开始",
     moments: [
-      { day: "Day 4", time: "22:05", place: "客厅", text: "她放了首很老的歌，你多听了两遍。", delta: 5 },
+      {
+        day: "Day 4",
+        time: "22:05",
+        place: "客厅",
+        text: "她放了首很老的歌，你多听了两遍。",
+        delta: 5,
+      },
     ],
   },
 ];
@@ -451,10 +487,25 @@ export const currentDay = 4;
 
 export const journey: JourneyDay[] = [
   { day: 1, label: "初见", title: "十个人住进小屋", desc: "自我介绍、第一印象，谁也没敢先开口。" },
-  { day: 2, label: "试探", title: "第一次共同任务", desc: "一起做饭、一起收拾，距离在无意中缩短。" },
+  {
+    day: 2,
+    label: "试探",
+    title: "第一次共同任务",
+    desc: "一起做饭、一起收拾，距离在无意中缩短。",
+  },
   { day: 3, label: "分歧", title: "选择开始有代价", desc: "有人被落下，有人第一次觉得不甘心。" },
-  { day: 4, label: "靠近", title: "厨房里的十二分钟", desc: "三件事之后，你可以主动私聊想见的人。" },
-  { day: 5, label: "约会", title: "两人一组，60 分钟独处", desc: "城南旧书店，名单由昨晚的心动抉择决定。" },
+  {
+    day: 4,
+    label: "靠近",
+    title: "厨房里的十二分钟",
+    desc: "三件事之后，你可以主动私聊想见的人。",
+  },
+  {
+    day: 5,
+    label: "约会",
+    title: "两人一组，60 分钟独处",
+    desc: "城南旧书店，名单由昨晚的心动抉择决定。",
+  },
   { day: 6, label: "摊牌", title: "把没说的话说出来", desc: "秘密开始流动，关系被重新排列。" },
   { day: 7, label: "告白", title: "最后一夜的选择", desc: "只能牵一个人的手，走出小屋。" },
 ];
@@ -589,8 +640,7 @@ export const finaleTraits: TraitCompare[] = [
 
 export const finaleVerdict = {
   title: "一个慢，但不会回头的人",
-  body:
-    "你以为自己是被动的，但数据里你几乎每一次都先走了一步；你以为自己理性，实际上你的选择很早就固定了，只是你花了四天才承认。你不擅长在人多的时候表达，却能在只剩两个人的时候把话说准。你的问题不是不主动，而是太在意会不会打扰别人——这让你错过了苏杳，也让温宁多等了三天。",
+  body: "你以为自己是被动的，但数据里你几乎每一次都先走了一步；你以为自己理性，实际上你的选择很早就固定了，只是你花了四天才承认。你不擅长在人多的时候表达，却能在只剩两个人的时候把话说准。你的问题不是不主动，而是太在意会不会打扰别人——这让你错过了苏杳，也让温宁多等了三天。",
 };
 
 /** 结语页开头的 slogan：描述这个人的恋爱特征 */
