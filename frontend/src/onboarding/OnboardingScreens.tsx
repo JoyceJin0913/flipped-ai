@@ -482,31 +482,7 @@ export function MatchingSelection() {
               }`}
             >
               <div className="flex items-start gap-3">
-                <div
-                  className={`relative size-24 shrink-0 overflow-hidden rounded-2xl border bg-male/10 ${
-                    npc.gender === "male" ? "border-male/40" : "border-female/40"
-                  } ${on ? "ring-2 ring-primary/60 ring-offset-2 ring-offset-background" : ""}`}
-                >
-                  <span
-                    className={`flex h-full w-full items-center justify-center text-2xl font-semibold ${
-                      npc.gender === "male" ? "text-male" : "text-female"
-                    }`}
-                  >
-                    {npc.name.slice(0, 1)}
-                  </span>
-                  {npc.avatar && (
-                    <img
-                      src={npc.avatar}
-                      alt={`${npc.name}头像`}
-                      className="absolute inset-0 h-full w-full object-cover"
-                      style={{ objectPosition: "50% 30%" }}
-                      draggable={false}
-                      onError={(event) => {
-                        event.currentTarget.hidden = true;
-                      }}
-                    />
-                  )}
-                </div>
+                <Avatar name={npc.name} gender={npc.gender} src={npc.avatar} size="lg" ring={on} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-base font-semibold text-foreground">{npc.name}</span>
@@ -616,32 +592,11 @@ export function IntroScene() {
           <SectionTitle hint={`${competitors.length} 位`}>同性参与者</SectionTitle>
           <div className="flex flex-wrap gap-3">
             {competitors.map((npc) => (
-              <div key={npc.id} className="flex w-[72px] flex-col items-center gap-1.5">
-                <div
-                  className={`relative size-[72px] shrink-0 overflow-hidden rounded-2xl border bg-male/10 ${
-                    npc.gender === "male" ? "border-male/40" : "border-female/40"
-                  }`}
-                >
-                  <span
-                    className={`flex h-full w-full items-center justify-center text-xl font-semibold ${
-                      npc.gender === "male" ? "text-male" : "text-female"
-                    }`}
-                  >
-                    {npc.name.slice(0, 1)}
-                  </span>
-                  {npc.avatar && (
-                    <img
-                      src={npc.avatar}
-                      alt={`${npc.name}头像`}
-                      className="absolute inset-0 h-full w-full object-cover"
-                      style={{ objectPosition: "50% 30%" }}
-                      draggable={false}
-                      onError={(event) => {
-                        event.currentTarget.hidden = true;
-                      }}
-                    />
-                  )}
-                </div>
+              <div
+                key={npc.id}
+                className="flex items-center gap-2 rounded-full bg-secondary/50 py-1 pl-1 pr-3"
+              >
+                <Avatar name={npc.name} gender={npc.gender} src={npc.avatar} size="sm" />
                 <span className="text-xs text-muted-foreground">{npc.name}</span>
               </div>
             ))}

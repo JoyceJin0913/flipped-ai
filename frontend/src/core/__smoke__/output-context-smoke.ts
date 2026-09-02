@@ -4,7 +4,8 @@
  */
 import { getAllNpcOutputContexts, getNpcOutputContext } from "../outputContext";
 import { createNpcStateCard, type MemoryNote } from "../npcState";
-import { getChatTopics } from "../../data/chatTopics";
+import { planChatSuggestionSlots } from "../../data/chatTopics";
+import { MEMORY_FOLLOW_SLOT_PREFIX } from "../../lib/chatSuggestions";
 import type { WorldFacts } from "../worldTypes";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -105,23 +106,39 @@ assert(
   "全候选上下文应含派生 intimacy",
 );
 
-const conflictTopics = getChatTopics(chatB);
-assert(conflictTopics.length === 3, "私聊始终提供三个话题");
-assert(conflictTopics[0]?.intent === "repair", "冲突状态必须优先修复话题");
+// 冲突状态（tension 60 + conflict 记忆）→ 恰好三个 slot，唯一 repair 位于 advance。
+const conflictSlots = planChatSuggestionSlots(chatB);
+assert(conflictSlots.length === 3, "冲突状态仍规划恰好三个 slot");
 assert(
-  conflictTopics.every((topic) => topic.intent && topic.valence && topic.strength >= 0),
-  "话题必须携带确定性信号字段",
+  conflictSlots.map((slot) => slot.direction).join(",") === "continue,express,advance",
+  "冲突状态三个 slot 的 direction 互不相同",
+);
+assert(conflictSlots[2]?.slotId === "advance_repair", "冲突状态 advance 必须为 advance_repair");
+assert(conflictSlots[2]?.intent === "repair", "冲突状态 repair 意图只落在 advance slot");
+assert(
+  conflictSlots.filter((slot) => slot.intent === "repair").length === 1,
+  "冲突状态不得出现两个重复的修复选项",
+);
+assert(
+  new Set(conflictSlots.map((slot) => slot.intent)).size === 3,
+  "冲突状态三个 intent 互不相同",
+);
+assert(
+  conflictSlots.every(
+    (slot) => slot.signal.intent && slot.signal.valence && slot.signal.strength >= 0,
+  ),
+  "slot 必须携带确定性 signal 字段",
 );
 
-const interestTopics = getChatTopics(chatA);
-assert(interestTopics.length === 3, "有记忆和高兴趣时仍只返回三个话题");
-assert(
-  interestTopics.some((topic) => topic.key.startsWith("follow_secret_")),
-  "秘密记忆应生成关心话题",
+// 高好感 + 秘密记忆 → advance 让位于秘密记忆跟进（support），不出现重复的暧昧试探。
+const interestSlots = planChatSuggestionSlots(chatA);
+assert(interestSlots.length === 3, "有记忆和高兴趣时仍只规划三个 slot");
+const secretFollow = interestSlots.find(
+  (slot) => slot.slotId === "advance_follow_secret_a-private",
 );
 assert(
-  interestTopics.some((topic) => topic.intent === "romantic_probe"),
-  "高 interest 应生成试探话题",
+  secretFollow?.intent === "support",
+  "秘密记忆应形成 advance_follow_secret_a-private 的 support 跟进 slot",
 );
 
 const fallback = getNpcOutputContext(
@@ -130,11 +147,20 @@ const fallback = getNpcOutputContext(
   "chat_choices",
 );
 assert(fallback, "默认状态应生成上下文");
+const fallbackSlots = planChatSuggestionSlots(fallback);
+assert(fallbackSlots.length === 3, "默认状态仍规划恰好三个 slot");
 assert(
-  getChatTopics(fallback)
-    .map((topic) => topic.key)
-    .join(",") === "greet,today,know_more",
-  "无上下文时应稳定返回三个通用话题",
+  new Set(fallbackSlots.map((slot) => slot.intent)).size === 3,
+  "默认状态三个 intent 互不相同",
+);
+assert(!fallbackSlots.some((slot) => slot.intent === "repair"), "默认状态不得出现修复意图");
+assert(
+  !fallbackSlots.some((slot) => slot.intent === "romantic_probe"),
+  "默认状态不得出现暧昧试探意图",
+);
+assert(
+  !fallbackSlots.some((slot) => slot.slotId.startsWith(MEMORY_FOLLOW_SLOT_PREFIX)),
+  "默认状态不得出现记忆跟进 slot",
 );
 
-console.log("output context + dynamic chat topics smoke passed ✓");
+console.log("output context + dynamic chat suggestions smoke passed ✓");
