@@ -29,11 +29,19 @@ import { useIslandStore } from "@/stores/useIslandStore";
 import { useGameStore } from "@/stores/useOnboardingStore";
 import { getHeartSignal, type HeartSignal } from "@/core/heartSignal";
 import { getNpcOutputContext } from "@/core/outputContext";
-import { getChatTopics, type StatefulChatTopic } from "@/data/chatTopics";
+import { planChatSuggestionSlots } from "@/data/chatTopics";
+import {
+  mergeGeneratedSuggestions,
+  type ChatSuggestion,
+  type SuggestionDirection,
+  type SuggestionIntent,
+  type SuggestionSignal,
+  type SuggestionSlot,
+} from "@/lib/chatSuggestions";
 import { getNpcById } from "@/onboarding/npcLibrary";
 import { useHouseState } from "@/hooks/useHouseState";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
-import { postChat, postChoice } from "@/lib/api";
+import { postChat, postChoice, type ChatRequest } from "@/lib/api";
 
 type TabKey = "house" | "relationships" | "me";
 type Picked = Record<string, Choice["key"]>;
@@ -956,6 +964,76 @@ function MemberSheet({
 
 type ChatMsg = { from: "me" | "ta"; text: string };
 
+/** 一轮「三个选项」的完整快照：本地确定性 slot 与合并后的展示文案（含客户端兜底）。 */
+type SuggestionGeneration = {
+  slots: SuggestionSlot[];
+  suggestions: ChatSuggestion[];
+};
+
+/** 自由输入在服务端不可用时的 NPC 兜底回复（沿用历史文案）。 */
+const FREE_INPUT_FALLBACK_REPLY = "我听见了。只是这句话，我想再想一会儿。";
+
+/** 自由输入结算用的保守信号（spec §6.1：free_chat / neutral / strength 1 / chat）。 */
+const FREE_INPUT_SIGNAL: SuggestionSignal = {
+  intent: "free_chat",
+  valence: "neutral",
+  strength: 1,
+  memoryTag: "chat",
+};
+
+/** fetch 是否被 AbortController 取消（竞态保护用：取消不算失败，不触发兜底回退）。 */
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "AbortError"
+  );
+}
+
+/** 旧名单分支（成员没有 NPC id → 读不到状态卡，chatChoiceContext 为空）的静态 slot 元数据。 */
+const STATIC_SLOT_META: Record<
+  string,
+  { direction: SuggestionDirection; intent: SuggestionIntent; guidance: string }
+> = {
+  greet: {
+    direction: "continue",
+    intent: "greet",
+    guidance: "承接开场：先回应 NPC 刚打的招呼、自然说明来意；不要引用记忆、不要追问私事。",
+  },
+  today: {
+    direction: "express",
+    intent: "check_in",
+    guidance: "表达关心：温和地问问 NPC 今天的感受，语气真诚克制；不替玩家承诺或替他表态。",
+  },
+  invite: {
+    direction: "advance",
+    intent: "playful_shift",
+    guidance: "轻松推进：自然地把话题引向明天的安排，带一点期待但不施压；不替玩家承诺。",
+  },
+};
+
+/**
+ * 无 NPC 上下文的静态兜底 slot：文案沿用 house.ts 的兜底话题与逐人回复（replyOf），
+ * 保证旧名单成员也能走同一条「兜底文案 → 动态刷新」链路而不依赖状态卡。
+ */
+function staticFallbackSlotsFor(name: string): SuggestionSlot[] {
+  return fallbackChatTopics.slice(0, 3).map((topic) => {
+    const meta = STATIC_SLOT_META[topic.key];
+    return {
+      slotId: `static_${topic.key}`,
+      direction: meta?.direction ?? "continue",
+      intent: meta?.intent ?? "get_to_know",
+      guidance:
+        meta?.guidance ?? "推进话题：顺着刚才的话自然地把话题聊下去；不要引用记忆、不要泄露数值。",
+      fallbackLabel: topic.label,
+      fallbackText: topic.say,
+      fallbackReply: replyOf(topic, name),
+      signal: { intent: "chat", valence: "neutral", strength: 1, memoryTag: "chat" },
+    };
+  });
+}
+
 function ChatSheet({
   member,
   chatSessionId,
@@ -973,6 +1051,8 @@ function ChatSheet({
   const applyInteractionSignal = useIslandStore((state) => state.applyInteractionSignal);
   const playerName = useGameStore((state) => state.playerProfile?.name);
   const tone = member.gender === "m" ? "text-male" : "text-female";
+  const maxRounds = 20;
+  // 聊天区消息：初始为 NPC 开场白；发给服务端的 history 不含刚追加的玩家消息（走 userMessage）。
   const [msgs, setMsgs] = useState<ChatMsg[]>([
     { from: "ta", text: `（${member.where}）嗯？你怎么过来了。` },
   ]);
@@ -980,61 +1060,150 @@ function ChatSheet({
   const [draft, setDraft] = useState("");
   const [rounds, setRounds] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
-  const maxRounds = 20;
+
   const chatChoiceContext = member.id
     ? getNpcOutputContext({ npcStateCards, worldFacts, day }, member.id, "chat_choices")
     : null;
   const chatContentContext = member.id
     ? getNpcOutputContext({ npcStateCards, worldFacts, day }, member.id, "chat_content")
     : null;
-  const recommendedTopics: StatefulChatTopic[] = chatChoiceContext
-    ? getChatTopics(chatChoiceContext)
-    : fallbackChatTopics.slice(0, 3).map((topic) => ({
-        ...topic,
-        intent: "chat",
-        valence: "neutral" as const,
-        strength: 1 as const,
-        memoryTag: "chat" as const,
-      }));
+
+  // §10.3 竞态保护：单调递增的 requestId + AbortController。
+  // 新请求先作废旧请求；响应回来时 requestId 不是最新的一律丢弃；卸载时 abort。
+  const requestIdRef = useRef(0);
+  const controllerRef = useRef<AbortController | null>(null);
+
+  /** 以最新 NPC 上下文与对话规划下一轮三个 slot；成员无上下文（旧名单）时用静态兜底。 */
+  const planFor = (recent: readonly ChatMsg[]): SuggestionSlot[] =>
+    chatChoiceContext
+      ? planChatSuggestionSlots(chatChoiceContext, recent)
+      : staticFallbackSlotsFor(member.name);
+
+  // §10.1.1：首帧就用本地 slot fallback 渲染三个可点选项，不等网络。
+  const [optionGen, setOptionGen] = useState<SuggestionGeneration>(() => {
+    const initialMsgs: ChatMsg[] = [{ from: "ta", text: `（${member.where}）嗯？你怎么过来了。` }];
+    const slots = planFor(initialMsgs);
+    return { slots, suggestions: mergeGeneratedSuggestions(slots, []) };
+  });
+
+  /** 组装 /api/chat 请求体：history 为不含刚追加玩家消息的对话，slots 只上 wire 字段。 */
+  const chatRequestBody = (
+    history: readonly ChatMsg[],
+    slots: readonly SuggestionSlot[],
+    userMessage?: string,
+  ): ChatRequest => ({
+    member: {
+      ...(member.id ? { id: member.id } : {}),
+      name: member.name,
+      where: member.where,
+      gender: member.gender,
+    },
+    history: [...history],
+    ...(userMessage !== undefined ? { userMessage } : {}),
+    context: {
+      day,
+      ...(playerName ? { playerName } : {}),
+      ...(chatContentContext ? { npcContext: chatContentContext.llm.promptText } : {}),
+    },
+    slots: slots.map(({ slotId, direction, guidance, fallbackLabel, fallbackText }) => ({
+      slotId,
+      direction,
+      guidance,
+      fallbackLabel,
+      fallbackText,
+    })),
+  });
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
+  // §10.3：关闭面板 / 切换 NPC（卸载）时取消在途请求，避免过期 setState。
+  useEffect(() => {
+    return () => controllerRef.current?.abort();
+  }, []);
+
+  // §10.1.2-3：挂载时发一次开场请求（不带 userMessage → 只生成选项）。
+  // 成功后若会话仍是当前代（期间玩家未行动），用服务端文案整组原子替换本地兜底选项；
+  // 失败则保留兜底选项。严格模式重挂载的第一发已被上面 cleanup 的 abort 作废。
+  useEffect(() => {
+    if (!chatChoiceContext) return; // 无 NPC 上下文：不做开场刷新，保留静态兜底选项
+    const requestId = ++requestIdRef.current;
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    void (async () => {
+      try {
+        const result = await postChat({
+          ...chatRequestBody(msgs, planFor(msgs)),
+          signal: controller.signal,
+        });
+        if (requestIdRef.current !== requestId) return; // 玩家已行动 / 已切换会话：丢弃过期结果
+        setOptionGen((current) => ({
+          slots: current.slots,
+          suggestions: mergeGeneratedSuggestions(current.slots, result.suggestions ?? []),
+        }));
+      } catch (error) {
+        // 被更新的请求或卸载取消时静默；网络失败时本地兜底选项本就可用，无需回退动作。
+        if (!isAbortError(error)) {
+          console.warn("[chat] 开场选项刷新失败，保留本地兜底", error);
+        }
+      }
+    })();
+    // 开场请求只在挂载时发一次：下方依赖数组刻意留空，只取挂载瞬间的会话上下文
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * 发送一轮：点击选项或自由输入。把玩家消息追加进聊天区后，用最新对话规划下一轮
+   * slots，一次 postChat 同时拿 NPC 回复与下一轮三个选项（§10.2）。
+   * 服务端不可用时按本 slot 的 fallbackReply（自由输入用通用兜底）回复并退回本地选项，
+   * 会话不中断（§2.2：断网仍可聊满 20 轮）。
+   */
   const send = async (
     text: string,
     label: string,
     fallbackReply: string,
-    signalMeta: Pick<StatefulChatTopic, "intent" | "valence" | "strength" | "memoryTag">,
+    signalMeta: SuggestionSignal,
   ) => {
     const message = text.trim();
     if (sending || rounds >= maxRounds || !message) return;
 
-    setMsgs((m) => [...m, { from: "me", text: message }]);
+    const appended: ChatMsg[] = [...msgs, { from: "me", text: message }];
+    setMsgs(appended);
     setDraft("");
     setSending(true);
-    let reply = fallbackReply;
+
+    // §10.3：新请求作废在途旧请求（如开场请求），本轮以「追加后的对话」规划下一轮 slots。
+    const requestId = ++requestIdRef.current;
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    const nextSlots = planFor(appended);
+
+    let npcReply = fallbackReply;
+    let nextSuggestions = mergeGeneratedSuggestions(nextSlots, []); // 失败时退回本地 fallback 文案
     try {
       const result = await postChat({
-        member: {
-          ...(member.id ? { id: member.id } : {}),
-          name: member.name,
-          where: member.where,
-          gender: member.gender,
-        },
-        history: msgs,
-        userMessage: message,
-        context: {
-          day,
-          ...(playerName ? { playerName } : {}),
-          ...(chatContentContext ? { npcContext: chatContentContext.llm.promptText } : {}),
-        },
+        ...chatRequestBody(msgs, nextSlots, message), // history 用未追加的 msgs，玩家消息走 userMessage
+        signal: controller.signal,
       });
-      reply = result.reply;
+      if (requestIdRef.current !== requestId) return; // 过期响应：更新的请求 / 卸载已接管
+      // 服务端 200（含 mode:"fallback" 降级）视为成功：用服务端 reply（存在时）+ 文案选项；
+      // reply 缺失时退回本 slot 的本地兜底回复。
+      npcReply = result.reply && result.reply.trim() !== "" ? result.reply : fallbackReply;
+      nextSuggestions = mergeGeneratedSuggestions(nextSlots, result.suggestions ?? []);
     } catch (error) {
-      console.warn("[chat] 豆包不可用，使用固定回复", error);
+      if (isAbortError(error)) return; // 被更新的请求或卸载取消：不触碰任何状态
+      if (requestIdRef.current !== requestId) return; // 双保险
+      console.warn("[chat] 豆包不可用，使用本地兜底回复", error);
     }
-    setMsgs((m) => [...m, { from: "ta", text: reply }]);
+
+    // 收尾在同一批次完成：追加 NPC 回复 + 整组替换下一轮三个选项（§10.2.4 / §10.3 原子替换）。
+    setMsgs((current) => [...current, { from: "ta", text: npcReply }]);
+    setOptionGen({ slots: nextSlots, suggestions: nextSuggestions });
+
+    // §11 关系结算：用被点击 slot 的本地 signal（自由输入用保守映射），幂等 id 沿用历史格式。
     if (member.id) {
       const roundNumber = rounds + 1;
       const memory =
@@ -1061,7 +1230,7 @@ function ChatSheet({
         console.warn("[chat] 私聊信号未写入", result.error);
       }
     }
-    onLog({ name: member.name, label, say: message, reply });
+    onLog({ name: member.name, label, say: message, reply: npcReply });
     setRounds((value) => value + 1);
     setSending(false);
   };
@@ -1142,33 +1311,33 @@ function ChatSheet({
             </p>
           ) : (
             <>
-              {recommendedTopics.map((topic) => (
-                <button
-                  key={topic.key}
-                  onClick={() =>
-                    send(topic.say, topic.label, replyOf(topic, member.name), {
-                      intent: topic.intent,
-                      valence: topic.valence,
-                      strength: topic.strength,
-                      memoryTag: topic.memoryTag,
-                    })
-                  }
-                  className="w-full rounded-full border border-border px-4 py-2.5 text-left text-xs transition-colors hover:bg-secondary/60"
-                >
-                  {topic.label} · 「{topic.say}」
-                </button>
-              ))}
+              {/* 当前轮三个选项：发送中整块被「正在输入」取代，等价于禁用；开场的动态刷新不置 sending，
+                  因此刷新期间的本地兜底选项保持可点（§10.3）。 */}
+              {optionGen.suggestions.map((suggestion) => {
+                const slot = optionGen.slots.find((item) => item.slotId === suggestion.slotId);
+                return (
+                  <button
+                    key={suggestion.id}
+                    onClick={() =>
+                      send(
+                        suggestion.text,
+                        suggestion.label,
+                        slot?.fallbackReply ?? FREE_INPUT_FALLBACK_REPLY,
+                        suggestion.signal,
+                      )
+                    }
+                    className="w-full rounded-full border border-border px-4 py-2.5 text-left text-xs transition-colors hover:bg-secondary/60"
+                  >
+                    {suggestion.label} · 「{suggestion.text}」
+                  </button>
+                );
+              })}
 
               <form
                 className="flex items-center gap-2 pt-1"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void send(draft, "自由输入", "我听见了。只是这句话，我想再想一会儿。", {
-                    intent: "free_chat",
-                    valence: "neutral",
-                    strength: 1,
-                    memoryTag: "chat",
-                  });
+                  void send(draft, "自由输入", FREE_INPUT_FALLBACK_REPLY, FREE_INPUT_SIGNAL);
                 }}
               >
                 <input
