@@ -27,13 +27,13 @@ import type { NPC, MBTI, AttachmentType, Zodiac, StyleContract, AttachmentRules 
 import ajieAvatar from "@/assets/avatars/npcs/ajie.webp";
 import anranAvatar from "@/assets/avatars/npcs/anran.webp";
 import baizeAvatar from "@/assets/avatars/npcs/baize.webp";
-// id 为 chengyi，展示名「程亦」（旧名承熠保留在 npcSystemPrompts aliases 中）
+// 游戏内 id/name 为 chengyi/承熠，对应用户素材「程亦」
 import chengyiAvatar from "@/assets/avatars/npcs/chengyi.webp";
 import guyanAvatar from "@/assets/avatars/npcs/guyan.webp";
 import jiangyeAvatar from "@/assets/avatars/npcs/jiangye.webp";
 import linxiaAvatar from "@/assets/avatars/npcs/linxia.webp";
 import luzeAvatar from "@/assets/avatars/npcs/luze.webp";
-// id 为 ningwan，展示名「宁晚」（旧名宁婉保留在 npcSystemPrompts aliases 中）
+// 游戏内 id/name 为 ningwan/宁婉，对应用户素材「宁晚」
 import ningwanAvatar from "@/assets/avatars/npcs/ningwan.webp";
 import qiaoyiAvatar from "@/assets/avatars/npcs/qiaoyi.webp";
 import suqingAvatar from "@/assets/avatars/npcs/suqing.webp";
@@ -158,31 +158,6 @@ function anxiousStyle(
 }
 
 // ============================================================
-// NPC 职业表
-// 数据来源：《心动岛_16位NPC人格契约总览_v1.1》
-// 首页「发起私聊」卡片副标题展示为「职业 · MBTI」
-// 如需修改职业文案，只改这张表即可
-// ============================================================
-export const NPC_OCCUPATIONS: Record<string, string> = {
-  ajie: "健身教练",
-  jiangye: "独立游戏人",
-  guyan: "心理咨询师",
-  chengyi: "中学老师",
-  luze: "建筑设计师",
-  zhoumu: "摩托机械师",
-  xiaohai: "民宿主理人",
-  baize: "独立摄影师",
-  ningwan: "律师",
-  qiaoyi: "脱口秀编剧",
-  wenrou: "儿科医生",
-  anran: "数据科学家",
-  xiaoman: "独立音乐人",
-  linxia: "插画师",
-  suqing: "品牌公关",
-  xiazhi: "花艺师",
-};
-
-// ============================================================
 // makeNpc 工厂
 // ============================================================
 
@@ -211,7 +186,6 @@ function makeNpc(
     gender,
     age,
     mbti,
-    ...(NPC_OCCUPATIONS[id] ? { occupation: NPC_OCCUPATIONS[id] } : {}),
     zodiac: zodiac as NPC["zodiac"],
     attachment,
     personality: { surface, role, conflict, core },
@@ -234,7 +208,7 @@ export const MALE_NPCS: NPC[] = [
     "ajie",
     "阿杰",
     "male",
-    28,
+    24,
     "ESTP",
     "狮子座",
     "secure",
@@ -258,7 +232,7 @@ export const MALE_NPCS: NPC[] = [
     "jiangye",
     "江野",
     "male",
-    29,
+    26,
     "ENTP",
     "双子座",
     "secure",
@@ -283,7 +257,7 @@ export const MALE_NPCS: NPC[] = [
     "guyan",
     "顾言",
     "male",
-    30,
+    28,
     "INFJ",
     "天蝎座",
     "secure",
@@ -301,12 +275,12 @@ export const MALE_NPCS: NPC[] = [
     guyanAvatar,
   ),
 
-  // ---- 4. 程亦 · 温暖社交型，天生领袖 -----------------------------------
+  // ---- 4. 承熠 · 温暖社交型，天生领袖 -----------------------------------
   makeNpc(
     "chengyi",
-    "程亦",
+    "承熠",
     "male",
-    30,
+    27,
     "ENFJ",
     "天秤座",
     "secure",
@@ -327,7 +301,7 @@ export const MALE_NPCS: NPC[] = [
     "luze",
     "陆则",
     "male",
-    30,
+    26,
     "INTJ",
     "天蝎座",
     "avoidant",
@@ -369,7 +343,7 @@ export const MALE_NPCS: NPC[] = [
     "xiaohai",
     "小海",
     "male",
-    25,
+    23,
     "ESFP",
     "狮子座",
     "anxious",
@@ -417,12 +391,12 @@ export const MALE_NPCS: NPC[] = [
 // ============================================================
 
 export const FEMALE_NPCS: NPC[] = [
-  // ---- 9. 宁晚 · 干练主导，有规划 ---------------------------------------
+  // ---- 9. 宁婉 · 干练主导，有规划 ---------------------------------------
   makeNpc(
     "ningwan",
-    "宁晚",
+    "宁婉",
     "female",
-    30,
+    27,
     "ESTJ",
     "摩羯座",
     "secure",
@@ -447,7 +421,7 @@ export const FEMALE_NPCS: NPC[] = [
     "qiaoyi",
     "乔一",
     "female",
-    26,
+    25,
     "ENTP",
     "水瓶座",
     "secure",
@@ -472,7 +446,7 @@ export const FEMALE_NPCS: NPC[] = [
     "wenrou",
     "温柔",
     "female",
-    28,
+    24,
     "ISFJ",
     "巨蟹座",
     "secure",
@@ -495,7 +469,7 @@ export const FEMALE_NPCS: NPC[] = [
     "anran",
     "安然",
     "female",
-    29,
+    26,
     "INTP",
     "处女座",
     "avoidant",
@@ -537,7 +511,7 @@ export const FEMALE_NPCS: NPC[] = [
     "linxia",
     "林夏",
     "female",
-    26,
+    23,
     "INFP",
     "双鱼座",
     "anxious",
@@ -560,7 +534,7 @@ export const FEMALE_NPCS: NPC[] = [
     "suqing",
     "苏晴",
     "female",
-    27,
+    26,
     "ESFJ",
     "狮子座",
     "anxious",
@@ -584,7 +558,7 @@ export const FEMALE_NPCS: NPC[] = [
     "xiazhi",
     "夏栀",
     "female",
-    25,
+    22,
     "ENFP",
     "射手座",
     "anxious",

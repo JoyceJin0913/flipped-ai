@@ -86,7 +86,6 @@ export interface NPC {
   mbti: MBTI;
   zodiac: Zodiac;
   attachment: AttachmentType;
-  occupation?: string; // 职业（首页私聊卡片展示：职业 · MBTI）
   avatar?: string; // 头像 URL
   personality: IcebergPersonality;
 

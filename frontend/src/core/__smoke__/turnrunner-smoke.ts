@@ -32,10 +32,10 @@ const NINE = [
   "xiaohai", // 小海 anxious
   "luze", // 陆则 avoidant
   "anran", // 安然 avoidant
-  "chengyi", // 程亦 secure
+  "chengyi", // 承熠 secure
   "linxia", // 林夏 anxious
   "zhoumu", // 周牧 avoidant
-  "ningwan", // 宁晚 secure
+  "ningwan", // 宁婉 secure
   "xiazhi", // 夏栀 anxious
 ];
 
@@ -170,7 +170,7 @@ async function main(): Promise<void> {
       }
     });
     check("邻座A/B", () => {
-      if (m.fillText("{邻座A}与{邻座B}", ctx) !== "程亦与宁晚") {
+      if (m.fillText("{邻座A}与{邻座B}", ctx) !== "承熠与宁婉") {
         throw new Error(`got: ${m.fillText("{邻座A}与{邻座B}", ctx)}`);
       }
     });
@@ -196,7 +196,7 @@ async function main(): Promise<void> {
     check("邀请者A/B / 约会对象 / 听者", () => {
       if (
         m.fillText("{邀请者A}和{邀请者B}等在门口，{约会对象}已出发，{听者}躲在窗帘后", ctx) !==
-        "夏栀和宁晚等在门口，林夏已出发，周牧躲在窗帘后"
+        "夏栀和宁婉等在门口，林夏已出发，周牧躲在窗帘后"
       ) {
         throw new Error(
           `got: ${m.fillText("{邀请者A}和{邀请者B}等在门口，{约会对象}已出发，{听者}躲在窗帘后", ctx)}`,
