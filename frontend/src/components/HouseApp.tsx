@@ -6,8 +6,6 @@ import {
   storySequence,
   storyTransitions,
   members,
-  hotspots,
-  dateCard,
   genderOf,
   affinities,
   meAvatar,
@@ -23,8 +21,6 @@ import {
 import { RoomNight } from "@/components/RoomNight";
 import { FinaleReport } from "@/components/FinaleReport";
 import { EventFlow } from "@/components/EventFlow";
-import { getDay } from "@/data/events";
-import { getDaySceneImage } from "@/data/daySceneImages";
 import { useIslandStore } from "@/stores/useIslandStore";
 import { useGameStore } from "@/stores/useOnboardingStore";
 import { getHeartSignal, type HeartSignal } from "@/core/heartSignal";
@@ -557,40 +553,9 @@ function HouseContent({
 
 const ROOMS = ["客厅", "厨房", "阳台"] as const;
 
-function eventImageFor(day: number) {
-  return getDaySceneImage(day);
-}
-
 function compactChatText(text: string, maxLength = 44) {
   const normalized = text.replace(/\s+/g, " ").trim();
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}…` : normalized;
-}
-
-function summarizeChatsByMember(chatLog: ChatLogEntry[]) {
-  const summaries = new Map<
-    string,
-    { name: string; labels: string[]; rounds: number; firstSay: string; lastReply: string }
-  >();
-
-  chatLog.forEach((entry) => {
-    const current = summaries.get(entry.name);
-    if (!current) {
-      summaries.set(entry.name, {
-        name: entry.name,
-        labels: [entry.label],
-        rounds: 1,
-        firstSay: entry.say,
-        lastReply: entry.reply,
-      });
-      return;
-    }
-
-    current.rounds += 1;
-    current.lastReply = entry.reply;
-    if (!current.labels.includes(entry.label)) current.labels.push(entry.label);
-  });
-
-  return Array.from(summaries.values());
 }
 
 function HomeView({
@@ -614,14 +579,11 @@ function HomeView({
   onEnterRoom: () => void;
   onOpenFinale: () => void;
 }) {
-  const hero = scenes[1]!;
   const day = useIslandStore((s) => s.day);
   const appliedSignalIds = useIslandStore((s) => s.appliedSignalIds);
   const islandNpcs = useGameStore((s) => s.islandNpcs);
   const competitors = useGameStore((s) => s.competitors);
   const playerProfile = useGameStore((s) => s.playerProfile);
-  const todayEvents = getDay(day)?.events ?? [];
-  const chatSummaries = summarizeChatsByMember(chatLog);
   const [who, setWho] = useState<Member | null>(null);
   const [chatWith, setChatWith] = useState<{ member: Member; sessionId: string } | null>(null);
   const onboardingRoster = [...islandNpcs, ...competitors];
@@ -640,20 +602,6 @@ function HomeView({
         };
       })
     : members;
-  const inferredPlayerGender =
-    playerProfile?.gender ??
-    competitors[0]?.gender ??
-    (islandNpcs[0] ? (islandNpcs[0].gender === "male" ? "female" : "male") : null);
-  const genderCounts = houseMembers.reduce(
-    (counts, member) => {
-      counts[member.gender] += 1;
-      return counts;
-    },
-    { m: 0, f: 0 },
-  );
-  if (hasOnboardingRoster && inferredPlayerGender) {
-    genderCounts[inferredPlayerGender === "male" ? "m" : "f"] += 1;
-  }
 
   return (
     <div>
@@ -662,179 +610,77 @@ function HomeView({
         <p className="mt-2 text-sm text-muted-foreground">今天的小屋生活</p>
       </header>
 
-      <section className="relative mt-5 overflow-hidden rounded-3xl mx-4 shadow-glow">
-        <img
-          src={hero.image}
-          alt="小屋客厅的夜晚，成员们围坐聊天"
-          width={1024}
-          height={1280}
-          className="h-[300px] w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-night-fade" />
+      <JourneyTimeline onOpenFinale={onOpenFinale} onAdvanceDay={onAdvanceDay} />
 
-        <div className="absolute inset-x-0 top-5 text-center">
-          <p className="text-2xl font-semibold text-foreground drop-shadow">
-            Day {String(day).padStart(2, "0")}
-          </p>
-          <p className="mt-1 text-sm text-foreground/80">20:37 🌙</p>
-        </div>
-
-        {hotspots.map((h) => {
-          const s = scenes.find((x) => x.id === h.sceneId);
-          if (!s) return null;
-          return (
-            <button
-              key={h.sceneId}
-              onClick={() => onOpen(s)}
-              style={{ top: h.top, left: h.left }}
-              className="absolute inline-flex items-center gap-2 rounded-full glass-card px-3 py-1.5 text-xs text-foreground transition-transform hover:scale-105 active:scale-95"
-            >
-              <span className="relative flex size-2">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/70" />
-                <span className="relative inline-flex size-2 rounded-full bg-primary" />
-              </span>
-              {h.label}
-            </button>
-          );
-        })}
-      </section>
-
-      <JourneyTimeline onOpenFinale={onOpenFinale} />
-
-      {/* 成员名单：按房间分组，图外展示 */}
-      <section className="mt-4 px-5">
-        <div className="flex items-center justify-between">
+      {/* 发起私聊：两列头像卡片 */}
+      <section className="mt-6 px-5">
+        <div className="flex items-baseline justify-between">
           <div>
-            <h2 className="text-sm font-medium">此刻他们在哪</h2>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">每天可以和三个人发起私聊</p>
+            <h2 className="text-base font-semibold">发起私聊</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              小屋安静下来了，挑一个想聊的人说几句话吧
+            </p>
           </div>
-          <span className="text-[11px] text-muted-foreground">
-            {genderCounts.m} 男 · {genderCounts.f} 女
+          <span className="shrink-0 text-[11px] text-muted-foreground">
+            {houseMembers.length} 位嘉宾
           </span>
         </div>
-        <div className="mt-3 space-y-2.5">
-          {ROOMS.map((room) => {
-            const list = houseMembers.filter((m) => m.where.slice(1) === room);
+
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          {houseMembers.map((m) => {
+            const npc = m.id ? getNpcById(m.id) : undefined;
+            const tone = m.gender === "m" ? "text-male" : "text-female";
             return (
-              <div key={room} className="flex items-center gap-3">
-                <span className="w-10 shrink-0 text-[11px] text-muted-foreground">{room}</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {list.map((m) => (
-                    <button
-                      key={m.name}
-                      onClick={() => setWho(m)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-[11px] transition-colors ${
-                        m.gender === "m"
-                          ? "border-male/40 text-male hover:bg-male/10"
-                          : "border-female/40 text-female hover:bg-female/10"
-                      }`}
-                    >
-                      {m.avatar ? (
-                        <img
-                          src={m.avatar}
-                          alt=""
-                          loading="lazy"
-                          width={24}
-                          height={24}
-                          className="size-6 rounded-full object-cover"
-                        />
-                      ) : (
-                        <span className="grid size-6 place-items-center rounded-full bg-secondary/80 text-[10px]">
-                          {m.name[0]}
-                        </span>
-                      )}
-                      <span>{m.name}</span>
-                    </button>
-                  ))}
-                </div>
+              <div
+                key={m.id ?? m.name}
+                className="overflow-hidden rounded-2xl glass-card p-3"
+              >
+                <button
+                  onClick={() => setWho(m)}
+                  className="block w-full overflow-hidden rounded-xl transition-transform active:scale-[0.98]"
+                >
+                  {m.avatar ? (
+                    <img
+                      src={m.avatar}
+                      alt={m.name}
+                      loading="lazy"
+                      width={320}
+                      height={320}
+                      className="aspect-square w-full object-cover"
+                    />
+                  ) : (
+                    <span className="grid aspect-square w-full place-items-center bg-secondary/60 text-3xl font-semibold text-muted-foreground">
+                      {m.name[0]}
+                    </span>
+                  )}
+                </button>
+
+                <p className={`mt-2.5 truncate text-sm font-semibold ${tone}`}>{m.name}</p>
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  {npc
+                    ? `${npc.occupation ?? npc.personality.role.replace(/^小屋的/, "")} · ${npc.mbti}`
+                    : m.where}
+                </p>
+
+                <button
+                  onClick={() => {
+                    const npcKey = m.id ?? m.name;
+                    const prefix = `private-chat:d${day}:${npcKey}:`;
+                    const nextSession =
+                      appliedSignalIds.filter((signalId) => signalId.startsWith(prefix)).length + 1;
+                    setChatWith({ member: m, sessionId: `${prefix}s${nextSession}` });
+                  }}
+                  className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-full bg-romance py-2 text-xs font-medium text-primary-foreground transition-transform active:scale-[0.98]"
+                >
+                  <MessageCircle className="size-3.5" />
+                  私聊
+                </button>
               </div>
             );
           })}
         </div>
       </section>
 
-      {/* 三件事 */}
-      <section className="mt-6 px-5">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-base font-semibold">今天发生了</h2>
-        </div>
-
-        <h3 className="mt-3 text-sm font-medium text-accent">三件事</h3>
-        <ul className="mt-2 space-y-3">
-          {todayEvents.map((event, index) => (
-            <li key={event.id}>
-              <button
-                onClick={() => onReplayEvent(index)}
-                className="flex w-full items-center gap-3 rounded-2xl glass-card p-3 text-left transition-colors hover:bg-secondary/60"
-              >
-                <img
-                  src={eventImageFor(day)}
-                  alt={event.title}
-                  loading="lazy"
-                  width={1024}
-                  height={1280}
-                  className="size-14 shrink-0 rounded-xl object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{event.title}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {event.location} · {event.timeLabel}
-                  </p>
-                </div>
-                <span className="shrink-0 rounded-full bg-secondary px-2 py-1 text-[10px] text-accent">
-                  {event.kind === "decision" ? "选择事件" : "剧情事件"}
-                </span>
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-              </button>
-            </li>
-          ))}
-        </ul>
-
-        <h3 className="mt-6 text-sm font-medium text-accent">发生的私聊记录</h3>
-        {chatSummaries.length === 0 ? (
-          <p className="mt-2 rounded-2xl border border-dashed border-border/60 px-3 py-4 text-center text-xs text-muted-foreground">
-            还没有私聊。点上面的名字，去和 TA 说句话。
-          </p>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {chatSummaries.map((summary) => {
-              const chatGender = houseMembers.find(
-                (member) => member.name === summary.name,
-              )?.gender;
-              const chatTone =
-                chatGender === "m"
-                  ? "text-male"
-                  : chatGender === "f"
-                    ? "text-female"
-                    : "text-muted-foreground";
-              return (
-                <li key={summary.name} className="rounded-2xl glass-card p-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-medium ${chatTone}`}>你 × {summary.name}</span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {summary.rounds} 轮私聊
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    你们聊到{summary.labels.join("、")}。你从「
-                    {compactChatText(summary.firstSay)}」说起，
-                    {summary.name}最后回应：「{compactChatText(summary.lastReply)}」
-                  </p>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      <section className="mt-6 px-5">
-        <div className="rounded-2xl glass-card p-4">
-          <p className="text-xs tracking-widest text-accent">约会</p>
-          <p className="mt-1 text-sm font-medium">{dateCard.title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{dateCard.time}</p>
-          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{dateCard.desc}</p>
-        </div>
-      </section>
 
       <div className="space-y-2 px-5 pt-6">
         {canEnterRoom && (
@@ -843,20 +689,6 @@ function HomeView({
             className="w-full rounded-full bg-primary py-3 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
           >
             回到自己的房间
-          </button>
-        )}
-        <button
-          onClick={onReplay}
-          className="w-full rounded-full border border-border py-3 text-sm text-muted-foreground transition-colors hover:bg-secondary/60"
-        >
-          重看今天的三件事
-        </button>
-        {onAdvanceDay && day < 7 && (
-          <button
-            onClick={onAdvanceDay}
-            className="w-full rounded-full bg-romance py-3 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.98]"
-          >
-            进入下一天 →
           </button>
         )}
       </div>
@@ -1750,9 +1582,22 @@ function TabBar({ active, onChange }: { active: TabKey; onChange: (t: TabKey) =>
 }
 
 /** 7 天旅程时间轴（currentDay 从 island store 读；主题文案仍用 house.ts journey） */
-function JourneyTimeline({ onOpenFinale }: { onOpenFinale: () => void }) {
+function JourneyTimeline({
+  onOpenFinale,
+  onAdvanceDay,
+}: {
+  onOpenFinale: () => void;
+  onAdvanceDay?: (() => void) | undefined;
+}) {
   const day = useIslandStore((s) => s.day);
   const [open, setOpen] = useState<number | null>(day);
+
+  // 天数推进后，详情卡跟随切到新的当天
+  useEffect(() => {
+    setOpen(day);
+  }, [day]);
+
+  const nextDay = journey[day] ?? null;
 
   return (
     <section className="mt-5 px-5">
@@ -1807,6 +1652,16 @@ function JourneyTimeline({ onOpenFinale }: { onOpenFinale: () => void }) {
           );
         })}
       </div>
+
+      {onAdvanceDay && nextDay && (
+        <button
+          onClick={onAdvanceDay}
+          className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-full border border-primary/40 py-3 text-sm font-medium text-primary transition-colors hover:bg-primary/10 active:scale-[0.98]"
+        >
+          进入下一天 · Day {String(nextDay.day).padStart(2, "0")} {nextDay.label}
+          <ChevronRight className="size-4" />
+        </button>
+      )}
 
       {open !== null && (
         <div className="mt-3 rounded-2xl glass-card p-4 animate-fade-in">
